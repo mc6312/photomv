@@ -20,3 +20,27 @@
 
 TITLE = 'PhotoMV'
 VERSION = '1.0'
+
+
+import os, os.path
+
+
+def make_dirs(path, excpt=None):
+    try:
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+        return True
+
+    except OSError as ex:
+        emsg = 'Не удалось создать каталог "%s": %s' % (path, ex)
+
+        if isinstance(excpt, Exception):
+            raise excpt(emsg)
+        else:
+            print(emsg)
+            return False
+
+
+def validate_path(path):
+    return os.path.abspath(os.path.expanduser(path))

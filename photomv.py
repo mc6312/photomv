@@ -24,39 +24,19 @@ from gi.repository import GExiv2
 import sys
 import os, os.path
 import datetime
-from configparser import ConfigParser
 import shutil
 from locale import getdefaultlocale
 
 from pmvcommon import *
+from pmvconfig import *
 
 
 '''
-FEXIST_SKIP = 0
-FEXIST_RENAME = 1
-FEXIST_OVERWRITE = 2
-
-fexist_options = {u'skip':FEXIST_SKIP,
-                  u's':FEXIST_SKIP,
-                  u'rename':FEXIST_RENAME,
-                  u'r':FEXIST_RENAME,
-                  u'overwrite':FEXIST_OVERWRITE,
-                  u'o':FEXIST_OVERWRITE}
-
-OPT_IF_EXISTS = u'if-exists'
 
 #
 # настройки
 #
 
-# каталог, из которого копируются (или перемещаются) изображения
-cfg_source_dir = None
-
-# каталог, в который копируются (или перемещаются) изображения
-cfg_destination_dir = None
-
-# что делать с файлами, которые уже есть в каталоге-приемнике
-cfg_if_file_exists = FEXIST_RENAME
 
 # имя дополнительного подкаталога в каталоге назначения
 # если пустая строка - подкаталог не создается
@@ -74,8 +54,6 @@ cfg_subdir_video = u''
 # настройки. Для параметров, не указанных в файле, задаются значения
 # по умолчанию.
 
-def validate_path(path):
-    return os.path.abspath(os.path.expanduser(path))
 
 
 # асспейсибо гнидоопоссуму за кривую поддержку юникода во всем пыхтоне
@@ -341,9 +319,15 @@ def main(argv):
 '''
 
 def main(args):
-    bn =
-    print(args[0])
-    print(__file__)
+    print('%s v%s\n' % (TITLE, VERSION))
+
+    try:
+        env = Environment(args)
+    except Environment.Error as ex:
+        print(str(ex))
+        return 1
+
+
     return 0
 
 
