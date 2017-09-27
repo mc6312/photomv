@@ -20,9 +20,10 @@
 import os, os.path
 import sys
 from locale import getdefaultlocale
-from configparser import RawConfigParser
+from configparser import RawConfigParser, Error as ConfigParserError
 
 from pmvcommon import *
+from pmvtemplates import *
 
 
 ENCODING = getdefaultlocale()[1]
@@ -41,7 +42,7 @@ class PMVRawConfigParser(RawConfigParser):
             return ''
 
 
-__DEFAULT_CONFIG = '''[paths]
+DEFAULT_CONFIG = '''[paths]
 src-dirs = /media/user/NIKON D70/DCIM
 dest-dir = ~/docs/raw
 
@@ -57,20 +58,21 @@ Canon EOS 5D Mark III = c5d3
 Canon EOS 5D Mark III = ${year}/${month}/${day}/${type}${year}{$month}${day}_${alias}_${number}/raw
 '''
 
+
 class Environment():
     """Все настройки"""
 
     MODE_MOVE = 'photomv'
     MODE_COPY = 'photomv'
 
-    CFG_FILE = 'photomv.ini'
+    CFG_FILE = 'settings.ini'
 
     class Error(Exception):
         pass
 
     FEXIST_SKIP, FEXIST_RENAME, FEXIST_OVERWRITE = range(3)
 
-    fexist_options = {'skip':FEXIST_SKIP,
+    FEXIST_OPTIONS = {'skip':FEXIST_SKIP,
                       's':FEXIST_SKIP,
                       'rename':FEXIST_RENAME,
                       'r':FEXIST_RENAME,
@@ -89,8 +91,12 @@ class Environment():
 
     SEC_ALIASES = 'aliases'
 
-    E_BADVAL = 'Неправильное значение параметра "%s" в секции "%s" файла "%s" - %s'
-    E_NOVAL = 'Отсутствует значение параметра "%s" в секции "%s" файла "%s"'
+    E_BADVAL = 'Неправильное значение параметра "%s" в секции "%s" файла настроек "%s" - %s'
+    E_BADVAL2 = 'Неправильное значение параметра "%s" в секции "%s" файла настроек "%s"'
+    E_DUPVAL = 'Имя параметра "%s" использовано более одного раза в секции "%s" файла настроек "%s"'
+    E_NOVAL = 'Отсутствует значение параметра "%s" в секции "%s" файла настроек "%s"'
+    E_NOSECTION = 'В файле настроек "%s" отсутствует секция "%s"'
+    E_CONFIG = 'Ошибка обработки файла настроек - %s'
 
     def __init__(self, args, ovrbname=None):
         """Разбор командной строки, поиск и загрузка файла конфигурации.
@@ -130,10 +136,17 @@ class Environment():
         # что делать с файлами, которые уже есть в каталоге-приемнике
         self.ifFileExists = self.FEXIST_RENAME
 
-        #
+        # сокращенные псевдонимы камер
+        # ключи словаря - названия камер, соответствующие соотв. полю EXIF
+        # значения - строки псевдонимов
         self.aliases = {}
 
-        #
+        # индивидуальные шаблоны
+        # общий шаблон по умолчанию также будет воткнут сюда при
+        # вызове __read_config_templates()
+        # ключи словаря - названия камер из EXIF, или "*" для общего
+        # шаблона;
+        # значения словаря - экземпляры класса FileNameTemplate
         self.templates = {}
 
         #
@@ -144,8 +157,13 @@ class Environment():
         cfg = PMVRawConfigParser()
 
         with open(self.configPath, 'r', encoding=ENCODING) as f:
-            cfg.read_file(f)
-        # здесь пока исключения не проверяем. в документации об обработке ошибок чтения что-то мутно
+            try:
+                cfg.read_file(f)
+            except ConfigParserError as ex:
+                raise self.Error(self.E_CONFIG % str(ex))
+
+        # прочие исключения пока исключения не проверяем.
+        # в документации об обработке ошибок чтения что-то мутно
 
         #
         # выгребаем настройки
@@ -154,7 +172,12 @@ class Environment():
         if cfg.has_section(self.SEC_PATHS):
             self.__read_config_paths(cfg)
         else:
-            raise self.Error(self.E_NOSECTION % (self.SEC_PATHS, self.configPath))
+            raise self.Error(self.E_NOSECTION % (self.configPath, self.SEC_PATHS))
+
+        if cfg.has_section(self.SEC_OPTIONS):
+            self.__read_config_options(cfg)
+        else:
+            raise self.Error(self.E_NOSECTION % (self.configPath, self.SEC_OPTIONS))
 
         #
         # сокращённые имена камер
@@ -171,6 +194,8 @@ class Environment():
             self.__read_config_templates(cfg)
 
     def __read_config_paths(self, cfg):
+        """Разбор секции paths файла настроек"""
+
         #
         # каталоги с исходными файлами
         #
@@ -225,11 +250,50 @@ class Environment():
                 raise self.Error(self.E_BADVAL % (self.OPT_DEST_DIR, self.SEC_PATHS, self.configPath,
                     'каталог назначения совпадает с одним из исходных каталогов'))
 
+    def __read_config_options(self, cfg):
+        """Разбор секции options файла настроек"""
+
+        ieopt = cfg.getstr(self.SEC_OPTIONS, self.OPT_IF_EXISTS).lower()
+        if not ieopt:
+            raise self.Error(self.E_NOVAL % (self.OPT_IF_EXISTS, self.SEC_OPTIONS, self.configPath))
+
+        if ieopt not in self.FEXIST_OPTIONS:
+            raise self.Error(self.E_BADVAL2 % (self.OPT_IF_EXISTS, self.SEC_OPTIONS, self.configPath))
+
+        self.ifFileExists = self.FEXIST_OPTIONS[ieopt]
+
     def __read_config_aliases(self, cfg):
-        print('%s.__read_config_aliases() not yet implemented' % self.__class__.__name__)
+        """Разбор секции aliases файла настроек"""
+
+        anames = cfg.options(self.SEC_ALIASES)
+
+        for aname in anames:
+            astr = cfg.getstr(self.SEC_ALIASES, aname)
+
+            if not astr:
+                raise self.Error(self.E_NOVAL % (aname, self.SEC_ALIASES, self.configPath))
+
+            # проверку на повтор не делаем - RawConfigParser ругнётся раньше на одинаковые опции
+            self.aliases[aname.lower()] = normalize_filename(astr)
 
     def __read_config_templates(self, cfg):
-        print('%s.__read_config_templates() not yet implemented' % self.__class__.__name__)
+        """Разбор секции templates файла настроек"""
+
+        tnames = cfg.options(self.SEC_TEMPLATES)
+
+        for tname in tnames:
+            tstr = cfg.getstr(self.SEC_TEMPLATES, tname)
+
+            if not tstr:
+                raise self.Error(self.E_NOVAL % (tname, self.SEC_TEMPLATES, self.configPath))
+
+            tplname = tname.lower()
+
+            # проверку на повтор не делаем - RawConfigParser ругнётся раньше на одинаковые опции
+            try:
+                self.templates[tplname] = FileNameTemplate(tstr)
+            except Exception as ex:
+                raise self.Error(self.E_BADVAL % (tname, self.SEC_TEMPLATES, self.configPath, str(ex)))
 
     def __get_config_path(self, me):
         """Поиск файла конфигурации.
@@ -250,7 +314,7 @@ class Environment():
 
                 try:
                     with open(cfg, 'w+', encoding=ENCODING) as f:
-                        f.write(__DEFAULT_CONFIG)
+                        f.write(DEFAULT_CONFIG)
                 except OSError as ex:
                     raise self.Error('Не удалось создать новый файл настроек "%s" - %s' % (cfg, str(ex)))
 
@@ -260,7 +324,13 @@ class Environment():
 
     def __str__(self):
         return '''sourceDirs = %s
-destinationDir = "%s"''' % (str(self.sourceDirs), self.destinationDir)
+destinationDir = "%s"
+ifFileExists = %d
+aliases = %s
+templates = %s''' % \
+    (str(self.sourceDirs), self.destinationDir,
+    self.ifFileExists,
+    self.aliases, self.templates)
 
 
 if __name__ == '__main__':

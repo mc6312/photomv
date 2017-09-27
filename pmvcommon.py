@@ -44,3 +44,19 @@ def make_dirs(path, excpt=None):
 
 def validate_path(path):
     return os.path.abspath(os.path.expanduser(path))
+
+
+INVALID_FNAME_CHARS = ':\/<>'
+
+def normalize_filename(s):
+    """Ищет в строке символы, недопустимые для имени файла
+    (без каталога) - разделители путей, двоеточия и т.п.
+    Возвращает строку, где недопустимые символы заменены на "_"."""
+
+    return ''.join(map(lambda c: '_' if c in INVALID_FNAME_CHARS else c, s))
+
+
+if __name__ == '__main__':
+    print('[%s test]' % __file__)
+
+    print(normalize_filename('/some/filename:text'))
