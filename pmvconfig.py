@@ -330,7 +330,8 @@ aliases = %s
 templates = %s''' % \
     (str(self.sourceDirs), self.destinationDir,
     self.ifFileExists,
-    self.aliases, self.templates)
+    self.aliases,
+    ', '.join(map(str, self.templates.values())))
 
 
 if __name__ == '__main__':

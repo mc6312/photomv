@@ -18,11 +18,14 @@
     along with PhotoMV.  If not, see <http://www.gnu.org/licenses/>."""
 
 
+from pmvmetadata import FileMetadata
+
+
 class FileNameTemplate():
     """Шаблон для переименования файлов"""
 
-    F_YEAR, F_MONTH, F_DAY, F_HOUR, F_MINUTE,\
-    F_MODEL, F_ALIAS, F_PREFIX, F_NUMBER, F_TYPE = range(10)
+    F_TYPE, F_MODEL, F_ALIAS, F_PREFIX, F_NUMBER,\
+    F_YEAR, F_MONTH, F_DAY, F_HOUR, F_MINUTE = range(10)
 
     FLD_NAMES = {'y':F_YEAR, 'year':F_YEAR,
         'mon':F_MONTH, 'month':F_MONTH,
@@ -54,26 +57,77 @@ class FileNameTemplate():
 
         tplix = 0
         tstop = '{'
+        tplstart = tplix
+        tbracket = False
+        c = None
 
-        raise NotImplementedError('доделай меня')
+        def flush_word(tbracket, tword):
+            if tbracket:
+                # проверяем макрос
+                tword = tword.strip()
+                if not tword:
+                    raise self.Error(self.ERROR % (tplix, 'пустое имя макроса'))
+
+                tword = tword.lower()
+
+                if tword not in self.FLD_NAMES:
+                    raise self.Error(self.ERROR % (tplix, 'недопустимое имя макроса - "%s"' % tword))
+                else:
+                    # добавляем макрос
+                    self.fields.append(self.FLD_NAMES[tword])
+            else:
+                # добавляем простой текст
+                if tword:
+                    self.fields.append(tword)
 
         while tplix <= tplend:
-            tplstart = tplix
-            while tplix <= tplend and tplstr[tplix] != tstop:
+            while tplix <= tplend:
+                c = tplstr[tplix]
+
+                if c in '{}':
+                    if tplix < tplend:
+                        if tplstr[tplix+1] == c:
+                            tplix += 2
+                            continue
+
+                    if c != tstop:
+                        raise self.Error(self.ERROR % (tplix, 'недопустимое появление "%s"' % c))
+
+                    if c == '}':
+                        tbracket = True
+
+                    tstop = '}' if tstop == '{' else '{'
+                    break
+
                 tplix += 1
 
-            i
-            tword = tplstr[tplstart:tplix]
-            print('word:', tword)
+            if tplix >= tplend:
+                break
 
-            c = tplstr[tplix]
+            flush_word(tbracket, tplstr[tplstart:tplix])
+            if tbracket:
+                tbracket = False
+
             tplix += 1
+            tplstart = tplix
 
-            #        raise self.Error(self.ERROR % (tplix, 'имя макроса не должно содержать "{"'))
+        if tplstart < tplend:
+            if tstop == '}':
+                raise self.Error(self.ERROR % (tplix, 'незавершённый макрос'))
+            else:
+                flush_word(tbracket, tplstr[tplstart:tplix])
 
+    def __str__(self):
+        """Для отладки"""
+
+        return ''.join(map(lambda f: f if isinstance(f, str) else '<%d>' % f, self.fields))
+
+
+defaultFileNameTemplate = FileNameTemplate('{year}/{month}/{day}/{type}{year}{month}{day}_{hour}{minute}')
 
 
 if __name__ == '__main__':
     print('[%s test]' % __file__)
 
-    template = FileNameTemplate('{year}/{{month}/{day}/{type}{year}{month}{day}_{}{')
+    template = FileNameTemplate('{{boo}}{year}/{month}/{day}/{type}{year}{month}{day}_{ hour}{M}{{ moo }}')
+    print(template)
