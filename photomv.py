@@ -23,88 +23,125 @@ import os, os.path
 import datetime
 import shutil
 from locale import getdefaultlocale
+from collections import namedtuple
 
 from pmvcommon import *
 from pmvconfig import *
 
 
-'''
+work_mode = namedtuple('work_mode', 'method errmsg statmsg')
+
+workModeMove = work_mode(shutil.move, 'переместить', 'перемещено')
+workModeCopy = work_mode(shutil.copy, 'скопировать', 'скопировано')
 
 
+def process_source_dir(env, workMode, srcdir):
+    """Обработка исходного каталога.
 
-#
-# поперли чавкать файлами
-#
+    env         - экземпляр pmvconfig.Environment
+    workMode    - экземпляр work_mode
+    srcdir      - путь к каталогу.
 
-def main(argv):
-    disp_dest = None
+    Возвращает кортеж из двух элементов:
+    1. количество удачно перемещённых или скопированных файлов,
+    2. количество файлов, с которыми облом-с."""
 
-    for roots, dirs, files in os.walk(cfg_source_dir):
+    statProcessedFiles = 0
+    statSkippedFiles = 0
+
+    for srcroot, dirs, files in os.walk(srcdir):
+        if env.showSrcDir:
+            print(srcroot)
+
         for fname in files:
-            fpath = os.path.join(roots, fname)
-            if os.path.isfile(fpath):
-                dt = get_image_timestamp(fpath)
+            srcPathName = os.path.join(srcroot, fname)
+            if os.path.isfile(srcPathName):
+                # всякие там символические ссылки пока нафиг
+                try:
+                    metadata = FileMetadata(srcPathName)
+                except Exception as ex:
+                    statSkippedFiles += 1
 
-                if dt:
-                    fnext = os.path.splitext(fname)
+                    print('  * файл "%s" повреждён или ошибка чтения (%s)' % (fname, str(ex)))
+                    # с кривыми файлами ничего не делаем
+                    continue
 
-                    fdestdir = os.path.join(cfg_destination_dir,
-                                            u'%.4d' % dt.year,
-                                            u'%.2d' % dt.month,
-                                            u'%.2d' % dt.day)
+                #
+                # выясняем, каким шаблоном создавать новое имя файла
+                #
 
-                    if cfg_subdir:
-                        fdestdir = os.path.join(fdestdir, cfg_subdir)
+                fntemplate = env.get_template(metadata.fields[metadata.MODEL])
 
-                    if disp_dest != fdestdir:
-                        disp_dest = fdestdir
-                        print(u'%s images to %s' % (work_mode[0], disp_dest))
-                        if not os.path.isdir(fdestdir):
-                            make_dirs(fdestdir)
+                newSubDir, newFileName, newFileExt = fntemplate.get_new_file_name(env, metadata)
 
-                    fnewname = u'p%.4d%.2d%.2d_%s' % (dt.year, dt.month, dt.day,
-                                                      u''.join(filter(lambda c: c.isdigit(), fnext[0])))
-                    fnewext = fnext[1].lower()
-                    fnewpathname = os.path.join(fdestdir, fnewname)
+                destPath = os.path.join(env.destinationDir, newSubDir)
+                make_dirs(destPath, OSError)
 
-                    # чо делаем с уже существующим файлом?
-                    fnewpath = fnewpathname + fnewext
-                    fnsuffix = u''
+                print('  %s -> %s%s' % (fname, newFileName, newFileExt))
 
-                    if os.path.exists(fnewpath):
-                        if cfg_if_file_exists == FEXIST_SKIP:
+                destPathName = os.path.join(destPath, '%s%s' % (newFileName, newFileExt))
+
+                if os.path.exists(destPathName):
+                    if env.ifFileExists == env.FEXIST_SKIP:
+                        print('    файл уже существует, пропускаю')
+                        continue
+                    elif env.ifFileExists == env.FEXIST_RENAME:
+                        # пытаемся подобрать незанятое имя
+
+                        canBeRenamed = False
+
+                        # нефиг больше 10 повторов... и 10-то много
+                        for unum in range(1, 11):
+                            destPathName = os.path.join(destPath, '%s-%d%s' % (newFileName, unum, newFileExt))
+
+                            if not os.path.exists(destPathName):
+                                canBeRenamed = True
+                                break
+
+                        if not canBeRenamed:
+                            print('    в каталоге "%s" слишком много файлов с именем %s*%s' % (destPath, newFileName, newFileExt))
+
+                            statSkippedFiles += 1
                             continue
-                        elif cfg_if_file_exists == FEXIST_RENAME:
-                            fnuniq = False
-                            nsuffix = 0
-                            while nsuffix < 99:
-                                nsuffix += 1
-                                fnsuffix = u'-%.2d' % nsuffix
-                                fnewpath = fnewpathname + fnsuffix + fnewext
-                                if not os.path.exists(fnewpath):
-                                    fnuniq = True
-                                    break
 
-                            if not fnuniq:
-                                print(u'Too many similar file names in this directory')
-                                exit(2)
+                    # else:
+                    # env.FEXIST_OVERWRITE - перезаписываем
 
-                    print(u'%s -> %s' % (fname, fnewname + fnsuffix + fnewext))
-                    try:
-                        work_mode[1](fpath, fnewpath)
-                    except (IOError, os.error) as emsg:
-                        print(u'  error %s' % emsg)
-                else:
-                    print(u'%s is not an image file or cannot be opened' % fname)
-'''
+                #
+                # а вот теперь копируем или перемещаем файл
+                #
+
+                try:
+                    workMode.method(srcPathName, destPathName)
+                    statProcessedFiles += 1
+                except (IOError, os.error) as emsg:
+                    skippedFiles += 1
+                    print(u'    не удалось % файл - %s' % (workMode.errmsg, emsg))
+
+    return (statProcessedFiles, statSkippedFiles)
+
 
 def main(args):
     print('%s v%s\n' % (TITLE, VERSION))
 
     try:
         env = Environment(args)
-    except Environment.Error as ex:
-        print(str(ex))
+
+        workMode = workModeMove if env.modeMoveFiles else workModeCopy
+
+        statProcessedFiles = 0
+        statSkippedFiles = 0
+
+        for srcdir in env.sourceDirs:
+            spf, ssf = process_source_dir(env, workMode, srcdir)
+
+            statProcessedFiles += spf
+            statSkippedFiles += ssf
+
+        print('\nВсего файлов %s: %d, пропущено: %d' % (workMode.statmsg, statProcessedFiles, statSkippedFiles))
+
+    except Exception as ex:
+        print('* Ошибка: %s' % str(ex))
         return 1
 
 

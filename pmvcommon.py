@@ -26,11 +26,19 @@ import os, os.path
 
 
 def make_dirs(path, excpt=None):
+    """Создание пути path с подкаталогами.
+
+    В случае успеха возвращает None.
+    В случае ошибки:
+    - если параметр excpt - экземпляр класса Exception, то генерирует
+      соотв. исключение;
+    - иначе возвращает строку с сообщением об ошибке."""
+
     try:
         if not os.path.exists(path):
             os.makedirs(path)
 
-        return True
+        return None
 
     except OSError as ex:
         emsg = 'Не удалось создать каталог "%s": %s' % (path, ex)
@@ -38,8 +46,7 @@ def make_dirs(path, excpt=None):
         if isinstance(excpt, Exception):
             raise excpt(emsg)
         else:
-            print(emsg)
-            return False
+            return emsg
 
 
 def validate_path(path):

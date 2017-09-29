@@ -54,8 +54,8 @@ NIKON D70 = nd70
 Canon EOS 5D Mark III = c5d3
 
 [templates]
-* = ${year}/${month}/${day}/${type}${year}{$month}${day}_${number}/raw
-Canon EOS 5D Mark III = ${year}/${month}/${day}/${type}${year}{$month}${day}_${alias}_${number}/raw
+* = {year}/{month}/{day}/{type}{year}{month}{day}_{number}/raw
+Canon EOS 5D Mark III = {year}/{month}/{day}/{type}{year}{month}{day}_{alias}_{number}/raw
 '''
 
 
@@ -63,7 +63,7 @@ class Environment():
     """Все настройки"""
 
     MODE_MOVE = 'photomv'
-    MODE_COPY = 'photomv'
+    MODE_COPY = 'photocp'
 
     CFG_FILE = 'settings.ini'
 
@@ -85,9 +85,10 @@ class Environment():
 
     SEC_OPTIONS = 'options'
     OPT_IF_EXISTS = 'if-exists'
+    OPT_SHOW_SRC_DIR = 'show-src-dir'
 
     SEC_TEMPLATES = 'templates'
-    OPT_CMN_TEMPLATE = '*'
+    DEFAULT_TEMPLATE_NAME = '*'
 
     SEC_ALIASES = 'aliases'
 
@@ -135,6 +136,9 @@ class Environment():
 
         # что делать с файлами, которые уже есть в каталоге-приемнике
         self.ifFileExists = self.FEXIST_RENAME
+
+        # показывать ли каталоги-источники
+        self.showSrcDir = False
 
         # сокращенные псевдонимы камер
         # ключи словаря - названия камер, соответствующие соотв. полю EXIF
@@ -253,6 +257,9 @@ class Environment():
     def __read_config_options(self, cfg):
         """Разбор секции options файла настроек"""
 
+        #
+        # if-exists
+        #
         ieopt = cfg.getstr(self.SEC_OPTIONS, self.OPT_IF_EXISTS).lower()
         if not ieopt:
             raise self.Error(self.E_NOVAL % (self.OPT_IF_EXISTS, self.SEC_OPTIONS, self.configPath))
@@ -261,6 +268,11 @@ class Environment():
             raise self.Error(self.E_BADVAL2 % (self.OPT_IF_EXISTS, self.SEC_OPTIONS, self.configPath))
 
         self.ifFileExists = self.FEXIST_OPTIONS[ieopt]
+
+        #
+        # show-src-dir
+        #
+        self.showSrcDir = cfg.getboolean(self.SEC_OPTIONS, self.OPT_SHOW_SRC_DIR, fallback=False)
 
     def __read_config_aliases(self, cfg):
         """Разбор секции aliases файла настроек"""
@@ -295,6 +307,13 @@ class Environment():
             except Exception as ex:
                 raise self.Error(self.E_BADVAL % (tname, self.SEC_TEMPLATES, self.configPath, str(ex)))
 
+        # если в файле настроек не был указан общий шаблон с именем "*",
+        # то добавляем в templates встроенный шаблон pmvtemplates.defaultFileNameTemplate
+        # под именем "*"
+
+        if self.DEFAULT_TEMPLATE_NAME not in self.templates:
+            self.templates[self.DEFAULT_TEMPLATE_NAME] = defaultFileNameTemplate
+
     def __get_config_path(self, me):
         """Поиск файла конфигурации.
 
@@ -322,14 +341,35 @@ class Environment():
 
         return cfg
 
+    def get_template(self, cameraModel):
+        """Получение экземпляра pmvtemplates.FileNameTemplate для
+        определённой камеры.
+
+        cameraModel - название модели из метаданных файла
+                      (pmvmetadata.FileMetadata.fields[pmvmetadata.MODEL]),
+                      пустая строка, или None;
+                      в последних двух случаях возвращает общий шаблон
+                      из файла настроек, если он указан, иначе возвращает
+                      встроенный общий шаблон программы."""
+
+        if cameraModel:
+            cameraModel = cameraModel.lower()
+
+            if cameraModel in self.templates:
+                return self.templates[cameraModel]
+
+        return self.templates[self.DEFAULT_TEMPLATE_NAME]
+
     def __str__(self):
         return '''sourceDirs = %s
 destinationDir = "%s"
 ifFileExists = %d
+showSrcDir = %s
 aliases = %s
 templates = %s''' % \
     (str(self.sourceDirs), self.destinationDir,
     self.ifFileExists,
+    self.showSrcDir,
     self.aliases,
     ', '.join(map(str, self.templates.values())))
 
@@ -344,3 +384,5 @@ if __name__ == '__main__':
         exit(1)
 
     print(env)
+    #tpl = env.get_template('')
+    #print('template:', tpl, repr(tpl))
