@@ -1,7 +1,7 @@
 packer = 7z
 pack = $(packer) a -mx=9
 arcx = .7z
-docs = COPYING README.md
+docs = COPYING Changelog README.md
 basename = photomv
 zipname = $(basename).zip
 arcname = $(basename)$(arcx)

@@ -54,8 +54,8 @@ NIKON D70 = nd70
 Canon EOS 5D Mark III = c5d3
 
 [templates]
-* = {year}/{month}/{day}/{type}{year}{month}{day}_{number}/raw
-Canon EOS 5D Mark III = {year}/{month}/{day}/{type}{year}{month}{day}_{alias}_{number}/raw
+* = {year}/{month}/{day}/raw/{type}{year}{month}{day}_{number}
+Canon EOS 5D Mark III = {year}/{month}/{day}/raw/{type}{year}{month}{day}_{alias}_{number}
 '''
 
 
