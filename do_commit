@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VER=`grep -Po "^VERSION\s=.*$" pmvcommon.py |sed -r "s/^.*=\s+//"`
+VER=`grep -Po "^VERSION\s=.*$" pmvcommon.py |sed -r "s/^.*=\s+//;s/'//"`
 
 git commit -a -m $VER
 
