@@ -63,7 +63,9 @@ class Environment():
     """Все настройки"""
 
     MODE_MOVE = 'photomv'
+    MODE_MOVE_GUI = 'photomvg'
     MODE_COPY = 'photocp'
+    MODE_COPY_GUI = 'photocpg'
 
     CFG_FILE = 'settings.ini'
 
@@ -99,34 +101,50 @@ class Environment():
     E_NOSECTION = 'В файле настроек "%s" отсутствует секция "%s"'
     E_CONFIG = 'Ошибка обработки файла настроек - %s'
 
-    def __init__(self, args, ovrbname=None):
-        """Разбор командной строки, поиск и загрузка файла конфигурации.
+    @staticmethod
+    def detect_work_mode(arg0):
+        """Определение режима работы по имени исполняемого файла программы arg0
+        (берется из sys.argv[0]).
 
-        args - аргументы командной строки
-
-        В случае ошибок генерирует исключения.
-        Исключение Environment.Error должно обрабатываться в программе."""
+        Возвращает кортеж из двух булевских значений:
+        1. режим работы - перемещение (True) или копирование (False);
+        2. режим интерфейса - GTK (True) или консоль (False)."""
 
         #
         # определяем, кто мы такое
         #
-        bname = os.path.basename(args[0] if ovrbname is None else ovrbname)
+        bname = os.path.basename(arg0)
 
         # имя того, что запущено, в т.ч. если вся куча засунута
         # в архив ZIP
 
         bnamecmd = os.path.splitext(bname)[0].lower()
 
-        if bnamecmd == self.MODE_MOVE:
-            self.modeMoveFiles = True
-        elif bnamecmd == self.MODE_COPY:
-            self.modeMoveFiles = False
+        if bnamecmd in (Environment.MODE_MOVE, Environment.MODE_MOVE_GUI):
+            modeMoveFiles = True
+        elif bnamecmd in (Environment.MODE_COPY, Environment.MODE_COPY_GUI):
+            modeMoveFiles = False
         else:
-            raise self.Error('Меня зовут %s, и я не знаю, что делать.' % bname)
+            raise Environment.Error('Меня зовут %s, и я не знаю, что делать.' % bname)
+
+        return (modeMoveFiles, bnamecmd in (Environment.MODE_MOVE_GUI, Environment.MODE_COPY_GUI))
+
+    def __init__(self, args, workModeMove, guiMode):
+        """Разбор командной строки, поиск и загрузка файла конфигурации.
+
+        args            - аргументы командной строки (список строк)
+        workModeMove    - режим работы - перемещение (True) или копирование (False)
+        guiMode         - режим интерфейса - GTK (True) или консоль (False)
+
+        В случае ошибок генерирует исключения.
+        Исключение Environment.Error должно обрабатываться в программе."""
+
 
         #
         # параметры
         #
+        self.modeMoveFiles = workModeMove
+        self.GUImode = guiMode
 
         # каталог, из которого копируются (или перемещаются) изображения
         self.sourceDirs = []
@@ -361,13 +379,15 @@ class Environment():
         return self.templates[self.DEFAULT_TEMPLATE_NAME]
 
     def __str__(self):
-        return '''sourceDirs = %s
+        return '''modeMoveFiles = %s
+GUImode = %s
+sourceDirs = %s
 destinationDir = "%s"
 ifFileExists = %d
 showSrcDir = %s
 aliases = %s
-templates = %s''' % \
-    (str(self.sourceDirs), self.destinationDir,
+templates = %s''' % (self.modeMoveFiles, self.GUImode,
+    str(self.sourceDirs), self.destinationDir,
     self.ifFileExists,
     self.showSrcDir,
     self.aliases,
@@ -378,7 +398,8 @@ if __name__ == '__main__':
     print('[%s test]' % __file__)
 
     try:
-        env = Environment(sys.argv, 'photomv.py')
+        mode, gui = Environment.detect_work_mode('photocpg.py')
+        env = Environment(sys.argv, mode, gui)
     except Environment.Error as ex:
         print('** %s' % str(ex))
         exit(1)

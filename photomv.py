@@ -49,6 +49,8 @@ def process_source_dir(env, workMode, srcdir):
     statProcessedFiles = 0
     statSkippedFiles = 0
 
+    fnindent = '  ' if env.showSrcDir else ''
+
     for srcroot, dirs, files in os.walk(srcdir):
         if env.showSrcDir:
             print(srcroot)
@@ -62,7 +64,7 @@ def process_source_dir(env, workMode, srcdir):
                 except Exception as ex:
                     statSkippedFiles += 1
 
-                    print('  * файл "%s" повреждён или ошибка чтения (%s)' % (fname, str(ex)))
+                    print('%s* файл "%s" повреждён или ошибка чтения (%s)' % (fnindent, fname, str(ex)))
                     # с кривыми файлами ничего не делаем
                     continue
 
@@ -77,13 +79,13 @@ def process_source_dir(env, workMode, srcdir):
                 destPath = os.path.join(env.destinationDir, newSubDir)
                 make_dirs(destPath, OSError)
 
-                print('  %s -> %s%s' % (fname, newFileName, newFileExt))
+                print('%s%s -> %s%s' % (fnindent, fname, newFileName, newFileExt))
 
                 destPathName = os.path.join(destPath, '%s%s' % (newFileName, newFileExt))
 
                 if os.path.exists(destPathName):
                     if env.ifFileExists == env.FEXIST_SKIP:
-                        print('    файл уже существует, пропускаю')
+                        print('%s  файл уже существует, пропускаю' % fnindent)
                         continue
                     elif env.ifFileExists == env.FEXIST_RENAME:
                         # пытаемся подобрать незанятое имя
@@ -99,7 +101,7 @@ def process_source_dir(env, workMode, srcdir):
                                 break
 
                         if not canBeRenamed:
-                            print('    в каталоге "%s" слишком много файлов с именем %s*%s' % (destPath, newFileName, newFileExt))
+                            print('%s  в каталоге "%s" слишком много файлов с именем %s*%s' % (fnindent, destPath, newFileName, newFileExt))
 
                             statSkippedFiles += 1
                             continue
@@ -116,7 +118,7 @@ def process_source_dir(env, workMode, srcdir):
                     statProcessedFiles += 1
                 except (IOError, os.error) as emsg:
                     skippedFiles += 1
-                    print(u'    не удалось % файл - %s' % (workMode.errmsg, emsg))
+                    print(u'%s  не удалось % файл - %s' % (fnindent, workMode.errmsg, emsg))
 
     return (statProcessedFiles, statSkippedFiles)
 
@@ -125,7 +127,11 @@ def main(args):
     print('%s v%s\n' % (TITLE, VERSION))
 
     try:
-        env = Environment(args)
+        mode, gui = Environment.detect_work_mode(args[0])
+        if gui:
+            print('* Внимание! Графический интерфейс еще не сделан. Пырься в консоль.\n')
+
+        env = Environment(args, mode, gui)
 
         workMode = workModeMove if env.modeMoveFiles else workModeCopy
 
