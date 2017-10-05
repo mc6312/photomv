@@ -22,15 +22,9 @@ from pmvconfig import *
 
 
 class UserInterface():
-    def __init__(self, env):
+    def __init__(self, env, worker):
         """Инициализация междумордия.
-        env - экземпляр pmvconfig.Environment."""
-
-        self.env = env
-
-    def run(self, worker):
-        """Запуск междумордия.
-
+        env - экземпляр pmvconfig.Environment
         worker - функция вида worker(env, ui), выполняющая собственно
             работу с файлами
             где:
@@ -39,6 +33,12 @@ class UserInterface():
                       вызвана функция (т.е. self)
             функция может (и должна) вызывать методы job_xxx() из ui.
             В случае ошибок ф-я должна генерировать исключения."""
+
+        self.env = env
+        self.worker = worker
+
+    def run(self):
+        """Запуск междумордия."""
 
         raise NotImplementedError('%s.run() not implemented')
 

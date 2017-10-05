@@ -133,6 +133,7 @@ def main(args):
     ui = None
     try:
         mode, gui = Environment.detect_work_mode(args[0])
+        gui = True #!!!
 
         if gui:
             from pmvgtkui import GTKUI as UIClass
@@ -141,8 +142,8 @@ def main(args):
 
         env = Environment(args, mode, gui)
 
-        ui = UIClass(env)
-        ui.run(process_task)
+        ui = UIClass(env, process_task)
+        ui.run()
 
     except Exception as ex:
         es = str(ex)

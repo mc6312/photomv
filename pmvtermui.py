@@ -25,15 +25,15 @@ import sys
 
 
 class TerminalUI(UserInterface):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, worker):
+        super().__init__(env, worker)
 
         print('%s v%s\n' % (TITLE, VERSION))
 
         self.printIndent = '  ' if env.showSrcDir else ''
 
-    def run(self, worker):
-        worker(self.env, self)
+    def run(self):
+        self.worker(self.env, self)
 
     def job_begin(self, msg=''):
         if msg:
@@ -55,7 +55,7 @@ class TerminalUI(UserInterface):
         print('%s* %s' % (self.printIndent, msg))
 
     def critical_error(self, msg):
-        print('* %s', msg)
+        print('* %s' % msg)
 
 
 if __name__ == '__main__':
