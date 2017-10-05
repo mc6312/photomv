@@ -21,26 +21,19 @@
 import sys
 import os, os.path
 import datetime
-import shutil
 from locale import getdefaultlocale
-from collections import namedtuple
 
 from pmvcommon import *
 from pmvconfig import *
 
 
-work_mode = namedtuple('work_mode', 'method errmsg statmsg')
 
-workModeMove = work_mode(shutil.move, 'переместить', 'перемещено')
-workModeCopy = work_mode(shutil.copy, 'скопировать', 'скопировано')
-
-
-def process_source_dir(env, workMode, srcdir):
+def process_source_dir(env, ui, srcdir):
     """Обработка исходного каталога.
 
-    env         - экземпляр pmvconfig.Environment
-    workMode    - экземпляр work_mode
-    srcdir      - путь к каталогу.
+    env     - экземпляр pmvconfig.Environment
+    ui      - экземпляр класса pmvui.UserInterface
+    srcdir  - путь к каталогу.
 
     Возвращает кортеж из двух элементов:
     1. количество удачно перемещённых или скопированных файлов,
@@ -49,11 +42,9 @@ def process_source_dir(env, workMode, srcdir):
     statProcessedFiles = 0
     statSkippedFiles = 0
 
-    fnindent = '  ' if env.showSrcDir else ''
-
     for srcroot, dirs, files in os.walk(srcdir):
         if env.showSrcDir:
-            print(srcroot)
+            ui.job_show_dir(srcroot)
 
         for fname in files:
             srcPathName = os.path.join(srcroot, fname)
@@ -64,7 +55,7 @@ def process_source_dir(env, workMode, srcdir):
                 except Exception as ex:
                     statSkippedFiles += 1
 
-                    print('%s* файл "%s" повреждён или ошибка чтения (%s)' % (fnindent, fname, str(ex)))
+                    ui.job_error('файл "%s" повреждён или ошибка чтения (%s)' % (fname, str(ex)))
                     # с кривыми файлами ничего не делаем
                     continue
 
@@ -79,13 +70,13 @@ def process_source_dir(env, workMode, srcdir):
                 destPath = os.path.join(env.destinationDir, newSubDir)
                 make_dirs(destPath, OSError)
 
-                print('%s%s -> %s%s' % (fnindent, fname, newFileName, newFileExt))
+                ui.job_progress(0.0, '%s -> %s%s' % (fname, newFileName, newFileExt))
 
                 destPathName = os.path.join(destPath, '%s%s' % (newFileName, newFileExt))
 
                 if os.path.exists(destPathName):
                     if env.ifFileExists == env.FEXIST_SKIP:
-                        print('%s  файл уже существует, пропускаю' % fnindent)
+                        ui.job_error('файл уже существует, пропускаю')
                         continue
                     elif env.ifFileExists == env.FEXIST_RENAME:
                         # пытаемся подобрать незанятое имя
@@ -101,7 +92,7 @@ def process_source_dir(env, workMode, srcdir):
                                 break
 
                         if not canBeRenamed:
-                            print('%s  в каталоге "%s" слишком много файлов с именем %s*%s' % (fnindent, destPath, newFileName, newFileExt))
+                            ui.job_error('в каталоге "%s" слишком много файлов с именем %s*%s' % (destPath, newFileName, newFileExt))
 
                             statSkippedFiles += 1
                             continue
@@ -114,40 +105,53 @@ def process_source_dir(env, workMode, srcdir):
                 #
 
                 try:
-                    workMode.method(srcPathName, destPathName)
+                    env.modeFileOp(srcPathName, destPathName)
                     statProcessedFiles += 1
                 except (IOError, os.error) as emsg:
                     skippedFiles += 1
-                    print(u'%s  не удалось % файл - %s' % (fnindent, workMode.errmsg, emsg))
+                    ui.job_error(u'не удалось % файл - %s' % (env.modeMessages.errmsg, emsg))
 
     return (statProcessedFiles, statSkippedFiles)
 
 
-def main(args):
-    print('%s v%s\n' % (TITLE, VERSION))
+def process_task(env, ui):
+    statProcessedFiles = 0
+    statSkippedFiles = 0
 
+    ui.job_begin()
+
+    for srcdir in env.sourceDirs:
+        spf, ssf = process_source_dir(env, ui, srcdir)
+
+        statProcessedFiles += spf
+        statSkippedFiles += ssf
+
+    ui.job_end('Всего файлов %s: %d, пропущено: %d' % (env.modeMessages.statmsg, statProcessedFiles, statSkippedFiles))
+
+
+def main(args):
+    ui = None
     try:
         mode, gui = Environment.detect_work_mode(args[0])
+
         if gui:
-            print('* Внимание! Графический интерфейс еще не сделан. Пырься в консоль.\n')
+            from pmvgtkui import GTKUI as UIClass
+        else:
+            from pmvtermui import TerminalUI as UIClass
 
         env = Environment(args, mode, gui)
 
-        workMode = workModeMove if env.modeMoveFiles else workModeCopy
-
-        statProcessedFiles = 0
-        statSkippedFiles = 0
-
-        for srcdir in env.sourceDirs:
-            spf, ssf = process_source_dir(env, workMode, srcdir)
-
-            statProcessedFiles += spf
-            statSkippedFiles += ssf
-
-        print('\nВсего файлов %s: %d, пропущено: %d' % (workMode.statmsg, statProcessedFiles, statSkippedFiles))
+        ui = UIClass(env)
+        ui.run(process_task)
 
     except Exception as ex:
-        print('* Ошибка: %s' % str(ex))
+        es = str(ex)
+
+        if ui:
+            ui.critical_error(es)
+        else:
+            print('* Ошибка: %s' % es)
+
         return 1
 
 

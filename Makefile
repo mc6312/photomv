@@ -9,7 +9,7 @@ srcarcname = $(basename)-src$(arcx)
 backupdir = ~/shareddocs/pgm/python/
 
 app:
-	$(pack) -tzip $(zipname) __main__.py photomv.py pmvcommon.py pmvconfig.py pmvtemplates.py pmvmetadata.py
+	$(pack) -tzip $(zipname) __main__.py photomv.py pmvcommon.py pmvconfig.py pmvtemplates.py pmvmetadata.py pmvui.py pmvgtkui.py pmvtermui.py
 	@echo '#!/usr/bin/env python3' >$(basename)
 	@cat $(zipname) >>$(basename)
 	rm $(zipname)

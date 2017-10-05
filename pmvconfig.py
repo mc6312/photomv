@@ -21,9 +21,13 @@ import os, os.path
 import sys
 from locale import getdefaultlocale
 from configparser import RawConfigParser, Error as ConfigParserError
+from collections import namedtuple
+import shutil
 
 from pmvcommon import *
 from pmvtemplates import *
+
+workmodemsgs = namedtuple('workmodemsgs', 'errmsg statmsg')
 
 
 ENCODING = getdefaultlocale()[1]
@@ -109,7 +113,10 @@ class Environment():
 
         Возвращает кортеж из двух булевских значений:
         1. режим работы - перемещение (True) или копирование (False);
-        2. режим интерфейса - GTK (True) или консоль (False)."""
+        2. режим интерфейса - GTK (True) или консоль (False).
+
+        В случае ошибки (не удалось определить режим) возвращает кортеж
+        из двух None."""
 
         #
         # определяем, кто мы такое
@@ -140,12 +147,18 @@ class Environment():
         В случае ошибок генерирует исключения.
         Исключение Environment.Error должно обрабатываться в программе."""
 
-
         #
         # параметры
         #
         self.modeMoveFiles = workModeMove
         self.GUImode = guiMode
+
+        if workModeMove:
+            self.modeMessages = workmodemsgs('переместить', 'перемещено')
+            self.modeFileOp = shutil.move
+        else:
+            self.modeMessages = workmodemsgs('скопировать', 'скопировано')
+            self.modeFileOp = shutil.copy
 
         # каталог, из которого копируются (или перемещаются) изображения
         self.sourceDirs = []
@@ -398,12 +411,16 @@ class Environment():
     def __str__(self):
         return '''modeMoveFiles = %s
 GUImode = %s
+modeMessages = %s
+modeFileOp = %s
 sourceDirs = %s
 destinationDir = "%s"
 ifFileExists = %d
 showSrcDir = %s
 aliases = %s
 templates = %s''' % (self.modeMoveFiles, self.GUImode,
+    self.modeMessages,
+    self.modeFileOp,
     str(self.sourceDirs), self.destinationDir,
     self.ifFileExists,
     self.showSrcDir,
