@@ -100,6 +100,7 @@ class Environment():
     E_NOVAL = 'Отсутствует значение параметра "%s" в секции "%s" файла настроек "%s"'
     E_NOSECTION = 'В файле настроек "%s" отсутствует секция "%s"'
     E_CONFIG = 'Ошибка обработки файла настроек - %s'
+    E_CMDLINE = 'параметр %d командной строки: %s'
 
     @staticmethod
     def detect_work_mode(arg0):
@@ -214,6 +215,22 @@ class Environment():
 
         if cfg.has_section(self.SEC_TEMPLATES):
             self.__read_config_templates(cfg)
+
+        #
+        # ...а вот теперь - разгребаем командную строку, т.к. ее параметры
+        # перекрывают файл настроек
+        #
+
+        for argnum, arg in enumerate(args[1:], 1):
+            if arg.startswith('-'):
+                if arg in ('-g', '--gui'):
+                    self.GUImode = True
+                elif arg in ('-n', '--no-gui'):
+                    self.GUImode = False
+                else:
+                    raise self.Error(self.E_CMDLINE % (argnum, 'параметр "%s" не поддерживается' % arg))
+            else:
+                raise self.Error(self.E_CMDLINE % (argnum, 'ненужное имя файла'))
 
     def __read_config_paths(self, cfg):
         """Разбор секции paths файла настроек"""
