@@ -85,6 +85,14 @@ class Environment():
                       'overwrite':FEXIST_OVERWRITE,
                       'o':FEXIST_OVERWRITE}
 
+    FEXISTS_OPTIONS_STR = {FEXIST_SKIP:'skip',
+        FEXIST_RENAME:'rename',
+        FEXIST_OVERWRITE:'overwrite'}
+
+    FEXISTS_DISPLAY = ('пропустить', # FEXIST_SKIP
+        'переименовать', # FEXIST_RENAME
+        'перезаписать')  # FEXIST_OVERWRITE
+
     SEC_PATHS = 'paths'
     OPT_SRC_DIRS = 'src-dirs'
     OPT_DEST_DIR = 'dest-dir'
@@ -189,12 +197,11 @@ class Environment():
         # ищем файл конфигурации
         #
         self.configPath = self.__get_config_path(args[0])
-
-        cfg = PMVRawConfigParser()
+        self.cfg = PMVRawConfigParser()
 
         with open(self.configPath, 'r', encoding=ENCODING) as f:
             try:
-                cfg.read_file(f)
+                self.cfg.read_file(f)
             except ConfigParserError as ex:
                 raise self.Error(self.E_CONFIG % str(ex))
 
@@ -205,13 +212,13 @@ class Environment():
         # выгребаем настройки
         #
 
-        if cfg.has_section(self.SEC_PATHS):
-            self.__read_config_paths(cfg)
+        if self.cfg.has_section(self.SEC_PATHS):
+            self.__read_config_paths()
         else:
             raise self.Error(self.E_NOSECTION % (self.configPath, self.SEC_PATHS))
 
-        if cfg.has_section(self.SEC_OPTIONS):
-            self.__read_config_options(cfg)
+        if self.cfg.has_section(self.SEC_OPTIONS):
+            self.__read_config_options()
         else:
             raise self.Error(self.E_NOSECTION % (self.configPath, self.SEC_OPTIONS))
 
@@ -219,15 +226,15 @@ class Environment():
         # сокращённые имена камер
         #
 
-        if cfg.has_section(self.SEC_ALIASES):
-            self.__read_config_aliases(cfg)
+        if self.cfg.has_section(self.SEC_ALIASES):
+            self.__read_config_aliases()
 
         #
         # шаблоны
         #
 
-        if cfg.has_section(self.SEC_TEMPLATES):
-            self.__read_config_templates(cfg)
+        if self.cfg.has_section(self.SEC_TEMPLATES):
+            self.__read_config_templates()
 
         #
         # ...а вот теперь - разгребаем командную строку, т.к. ее параметры
@@ -245,15 +252,14 @@ class Environment():
             else:
                 raise self.Error(self.E_CMDLINE % (argnum, 'ненужное имя файла'))
 
-    def __read_config_paths(self, cfg):
+    def __read_config_paths(self):
         """Разбор секции paths файла настроек"""
 
         #
         # каталоги с исходными файлами
         #
 
-        rawSrcDirs = map(lambda s: s.strip(), cfg.getstr(self.SEC_PATHS, self.OPT_SRC_DIRS).split(':'))
-        srcDirHashes = set()
+        rawSrcDirs = map(lambda s: s.strip(), self.cfg.getstr(self.SEC_PATHS, self.OPT_SRC_DIRS).split(':'))
 
         for ixsd, srcdir in enumerate(rawSrcDirs, 1):
             if srcdir:
@@ -261,19 +267,15 @@ class Environment():
 
                 srcdir = validate_path(srcdir)
 
-                # пути добавляем во внутренний список при двух условиях:
-                # 1. путь существует и указывает на каталог
-                # 2. путь еще не добавлен в список;
-                #    проверка на повторы - РЕГИСТРО-ЗАВИСИМАЯ, ибо *nix
-                if os.path.exists(srcdir):
-                    if not os.path.isdir(srcdir):
-                        raise self.Error(self.E_BADVAL % (self.OPT_SRC_DIRS, self.SEC_PATHS, self.configPath,
-                            'путь "%s" указывает не на каталог' % srcdir))
+                # путь добавляем во внутренний список, если он не совпадает
+                # с каким-то из уже добавленных;
+                # существование каталога будет проверено при обработке файлов
 
-                    h = hash(srcdir)
-                    if h not in srcDirHashes:
-                        srcDirHashes.add(h)
-                        self.sourceDirs.append(srcdir)
+                if self.same_src_dir(srcdir):
+                    raise self.Error(self.E_BADVAL % (self.OPT_SRC_DIRS, self.SEC_PATHS, self.configPath,
+                        'путь %d (%s) совпадает с одним из уже указанных' % (ixsd, srcdir)))
+
+                self.sourceDirs.append(srcdir)
 
         if not self.sourceDirs:
             raise self.Error(self.E_BADVAL % (self.OPT_SRC_DIRS, self.SEC_PATHS, self.configPath, 'не указано ни одного существующего исходного каталога'))
@@ -282,7 +284,7 @@ class Environment():
         # каталог назначения
         #
 
-        self.destinationDir = cfg.getstr(self.SEC_PATHS, self.OPT_DEST_DIR)
+        self.destinationDir = self.cfg.getstr(self.SEC_PATHS, self.OPT_DEST_DIR)
 
         if not self.destinationDir:
             raise self.Error(self.E_NOVAL % (self.OPT_DEST_DIR, self.SEC_PATHS, self.configPath))
@@ -297,18 +299,27 @@ class Environment():
             raise self.Error(self.E_BADVAL % (self.OPT_DEST_DIR, self.SEC_PATHS, self.configPath,
                 'путь "%s" указывает не на каталог' % self.destinationDir))
 
-        for sdir in self.sourceDirs:
-            if os.path.samefile(sdir, self.destinationDir):
-                raise self.Error(self.E_BADVAL % (self.OPT_DEST_DIR, self.SEC_PATHS, self.configPath,
-                    'каталог назначения совпадает с одним из исходных каталогов'))
+        if self.same_src_dir(self.destinationDir):
+            raise self.Error(self.E_BADVAL % (self.OPT_DEST_DIR, self.SEC_PATHS, self.configPath,
+                'каталог назначения совпадает с одним из исходных каталогов'))
 
-    def __read_config_options(self, cfg):
+    def same_src_dir(self, dirname):
+        """Возвращает True, если каталог dirname совпадает с одним из
+        каталогов списка self.sourceDirs."""
+
+        for sd in self.sourceDirs:
+            if same_dir(sd, dirname):
+                return True
+
+        return False
+
+    def __read_config_options(self):
         """Разбор секции options файла настроек"""
 
         #
         # if-exists
         #
-        ieopt = cfg.getstr(self.SEC_OPTIONS, self.OPT_IF_EXISTS).lower()
+        ieopt = self.cfg.getstr(self.SEC_OPTIONS, self.OPT_IF_EXISTS).lower()
         if not ieopt:
             raise self.Error(self.E_NOVAL % (self.OPT_IF_EXISTS, self.SEC_OPTIONS, self.configPath))
 
@@ -320,15 +331,15 @@ class Environment():
         #
         # show-src-dir
         #
-        self.showSrcDir = cfg.getboolean(self.SEC_OPTIONS, self.OPT_SHOW_SRC_DIR, fallback=False)
+        self.showSrcDir = self.cfg.getboolean(self.SEC_OPTIONS, self.OPT_SHOW_SRC_DIR, fallback=False)
 
-    def __read_config_aliases(self, cfg):
+    def __read_config_aliases(self):
         """Разбор секции aliases файла настроек"""
 
-        anames = cfg.options(self.SEC_ALIASES)
+        anames = self.cfg.options(self.SEC_ALIASES)
 
         for aname in anames:
-            astr = cfg.getstr(self.SEC_ALIASES, aname)
+            astr = self.cfg.getstr(self.SEC_ALIASES, aname)
 
             if not astr:
                 raise self.Error(self.E_NOVAL % (aname, self.SEC_ALIASES, self.configPath))
@@ -336,13 +347,13 @@ class Environment():
             # проверку на повтор не делаем - RawConfigParser ругнётся раньше на одинаковые опции
             self.aliases[aname.lower()] = normalize_filename(astr)
 
-    def __read_config_templates(self, cfg):
+    def __read_config_templates(self):
         """Разбор секции templates файла настроек"""
 
-        tnames = cfg.options(self.SEC_TEMPLATES)
+        tnames = self.cfg.options(self.SEC_TEMPLATES)
 
         for tname in tnames:
-            tstr = cfg.getstr(self.SEC_TEMPLATES, tname)
+            tstr = self.cfg.getstr(self.SEC_TEMPLATES, tname)
 
             if not tstr:
                 raise self.Error(self.E_NOVAL % (tname, self.SEC_TEMPLATES, self.configPath))
@@ -368,26 +379,26 @@ class Environment():
         При отсутствии - создание файла со значениями по умолчанию
         и завершение работы."""
 
-        cfg = os.path.join(os.path.split(me)[0], self.CFG_FILE)
+        cfgpath = os.path.join(os.path.split(me)[0], self.CFG_FILE)
 
-        if not os.path.exists(cfg):
+        if not os.path.exists(cfgpath):
             cfgdir = os.path.expanduser('~/.config/photomv')
-            cfg = os.path.join(cfgdir, self.CFG_FILE)
+            cfgpath = os.path.join(cfgdir, self.CFG_FILE)
 
-            if not os.path.exists(cfg):
+            if not os.path.exists(cfgpath):
                 # создаём файл настроек
 
                 make_dirs(cfgdir, self.Error)
 
                 try:
-                    with open(cfg, 'w+', encoding=ENCODING) as f:
+                    with open(cfgpath, 'w+', encoding=ENCODING) as f:
                         f.write(DEFAULT_CONFIG)
                 except OSError as ex:
-                    raise self.Error('Не удалось создать новый файл настроек "%s" - %s' % (cfg, str(ex)))
+                    raise self.Error('Не удалось создать новый файл настроек "%s" - %s' % (cfgpath, str(ex)))
 
-                raise self.Error('Файл настроек не найден, создан новый файл "%s".\nДля продолжения работы файл настроек должен быть отредактирован.' % cfg)
+                raise self.Error('Файл настроек не найден, создан новый файл "%s".\nДля продолжения работы файл настроек должен быть отредактирован.' % cfgpath)
 
-        return cfg
+        return cfgpath
 
     def get_template(self, cameraModel):
         """Получение экземпляра pmvtemplates.FileNameTemplate для
@@ -409,7 +420,8 @@ class Environment():
         return self.templates[self.DEFAULT_TEMPLATE_NAME]
 
     def __str__(self):
-        return '''modeMoveFiles = %s
+        return '''cfg = %s
+modeMoveFiles = %s
 GUImode = %s
 modeMessages = %s
 modeFileOp = %s
@@ -418,7 +430,8 @@ destinationDir = "%s"
 ifFileExists = %d
 showSrcDir = %s
 aliases = %s
-templates = %s''' % (self.modeMoveFiles, self.GUImode,
+templates = %s''' % (self.cfg,
+    self.modeMoveFiles, self.GUImode,
     self.modeMessages,
     self.modeFileOp,
     str(self.sourceDirs), self.destinationDir,
@@ -434,6 +447,7 @@ if __name__ == '__main__':
     try:
         mode, gui = Environment.detect_work_mode('photocpg.py')
         env = Environment(sys.argv, mode, gui)
+        print(env.configPath)
     except Environment.Error as ex:
         print('** %s' % str(ex))
         exit(1)

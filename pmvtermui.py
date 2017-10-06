@@ -35,24 +35,19 @@ class TerminalUI(UserInterface):
     def run(self):
         self.worker(self.env, self)
 
-    def job_begin(self, msg=''):
-        if msg:
-            print(msg)
-
     def job_show_dir(self, dirname=''):
-        if dirname:
+        if self.env.showSrcDir and dirname:
             print(dirname)
 
     def job_progress(self, progress, msg=''):
         if msg:
             print('%s%s' % (self.printIndent, msg))
 
-    def job_end(self, msg=''):
-        if msg:
-            print(msg)
-
     def job_error(self, msg):
         print('%s* %s' % (self.printIndent, msg))
+
+    def job_warning(self, msg):
+        self.job_error(msg)
 
     def critical_error(self, msg):
         print('* %s' % msg)
@@ -62,4 +57,4 @@ if __name__ == '__main__':
     print('[%s test]' % __file__)
 
     env = Environment(sys.argv, True, False)
-    ui = TerminalUI(env)
+    ui = TerminalUI(env, lambda e,ui: [])

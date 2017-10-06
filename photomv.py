@@ -27,122 +27,147 @@ from pmvcommon import *
 from pmvconfig import *
 
 
-
-def process_source_dir(env, ui, srcdir):
-    """Обработка исходного каталога.
+def process_files(env, ui, srcDirs=None):
+    """Обработка исходных каталогов.
 
     env     - экземпляр pmvconfig.Environment
     ui      - экземпляр класса pmvui.UserInterface
-    srcdir  - путь к каталогу.
+    srcDirs - список исходных каталогов;
+              если None или пустой список - будет использован
+              список env.sourceDirs
 
-    Возвращает кортеж из двух элементов:
-    1. количество удачно перемещённых или скопированных файлов,
-    2. количество файлов, с которыми облом-с."""
+    Возвращает список строк, содержащих сообщения
+    (кол-во обработанных файлов и т.п.)."""
 
+    statTotalFiles = 0
     statProcessedFiles = 0
     statSkippedFiles = 0
 
-    for srcroot, dirs, files in os.walk(srcdir):
-        if env.showSrcDir:
-            ui.job_show_dir(srcroot)
+    #
+    # 1й проход - подсчет общего количества файлов
+    #
+    ui.job_progress(0.0, 'Подготовка...')
 
-        for fname in files:
-            srcPathName = os.path.join(srcroot, fname)
-            if os.path.isfile(srcPathName):
-                # всякие там символические ссылки пока нафиг
-                try:
-                    metadata = FileMetadata(srcPathName)
-                except Exception as ex:
-                    statSkippedFiles += 1
+    if not srcDirs:
+        srcDirs = env.sourceDirs
 
-                    ui.job_error('файл "%s" повреждён или ошибка чтения (%s)' % (fname, str(ex)))
-                    # с кривыми файлами ничего не делаем
-                    continue
+    # да, вот так, через жопу
+    sourcedirs = [] # с этим списком будет работать 2й проход
 
-                #
-                # выясняем, каким шаблоном создавать новое имя файла
-                #
+    for srcdir in srcDirs:
+        if not os.path.exists(srcdir) or not os.path.isdir(srcdir):
+            ui.job_error('путь "%s" не существует или указывает не на каталог' % srcdir)
+        else:
+            nfiles = 0
+            for srcroot, dirs, files in os.walk(srcdir):
+                ui.job_progress(-1.0) # progressbar.pulse()
+                for fname in files:
+                    nfiles += 1
 
-                fntemplate = env.get_template(metadata.fields[metadata.MODEL])
+            if nfiles:
+                sourcedirs.append(srcdir)
+                statTotalFiles += nfiles
 
-                newSubDir, newFileName, newFileExt = fntemplate.get_new_file_name(env, metadata)
+    if not sourcedirs:
+        return ['не с чем работать%s' % (' - нет файлов' if not statTotalFiles else '')]
 
-                destPath = os.path.join(env.destinationDir, newSubDir)
-                make_dirs(destPath, OSError)
+    #
+    # 2й проход - собственно обработка файлов
+    #
+    if statTotalFiles:
+        nFileIx = 0
 
-                ui.job_progress(0.0, '%s -> %s%s' % (fname, newFileName, newFileExt))
+        for srcdir in sourcedirs:
+            for srcroot, dirs, files in os.walk(srcdir):
+                ui.job_show_dir(srcroot)
 
-                destPathName = os.path.join(destPath, '%s%s' % (newFileName, newFileExt))
+                for fname in files:
+                    nFileIx += 1
 
-                if os.path.exists(destPathName):
-                    if env.ifFileExists == env.FEXIST_SKIP:
-                        ui.job_error('файл уже существует, пропускаю')
-                        continue
-                    elif env.ifFileExists == env.FEXIST_RENAME:
-                        # пытаемся подобрать незанятое имя
-
-                        canBeRenamed = False
-
-                        # нефиг больше 10 повторов... и 10-то много
-                        for unum in range(1, 11):
-                            destPathName = os.path.join(destPath, '%s-%d%s' % (newFileName, unum, newFileExt))
-
-                            if not os.path.exists(destPathName):
-                                canBeRenamed = True
-                                break
-
-                        if not canBeRenamed:
-                            ui.job_error('в каталоге "%s" слишком много файлов с именем %s*%s' % (destPath, newFileName, newFileExt))
-
+                    srcPathName = os.path.join(srcroot, fname)
+                    if os.path.isfile(srcPathName):
+                        # всякие там символические ссылки пока нафиг
+                        try:
+                            metadata = FileMetadata(srcPathName)
+                        except Exception as ex:
                             statSkippedFiles += 1
+
+                            ui.job_error('файл "%s" повреждён или ошибка чтения (%s)' % (fname, str(ex)))
+                            # с кривыми файлами ничего не делаем
                             continue
 
-                    # else:
-                    # env.FEXIST_OVERWRITE - перезаписываем
+                        #
+                        # выясняем, каким шаблоном создавать новое имя файла
+                        #
 
-                #
-                # а вот теперь копируем или перемещаем файл
-                #
+                        fntemplate = env.get_template(metadata.fields[metadata.MODEL])
 
-                try:
-                    env.modeFileOp(srcPathName, destPathName)
-                    statProcessedFiles += 1
-                except (IOError, os.error) as emsg:
-                    skippedFiles += 1
-                    ui.job_error(u'не удалось % файл - %s' % (env.modeMessages.errmsg, emsg))
+                        newSubDir, newFileName, newFileExt = fntemplate.get_new_file_name(env, metadata)
 
-    return (statProcessedFiles, statSkippedFiles)
+                        destPath = os.path.join(env.destinationDir, newSubDir)
+                        make_dirs(destPath, OSError)
 
+                        newFileNameExt = newFileName + newFileExt
 
-def process_task(env, ui):
-    statProcessedFiles = 0
-    statSkippedFiles = 0
+                        ui.job_progress(float(nFileIx) / statTotalFiles, '%s -> %s' % (fname, newFileNameExt))
 
-    ui.job_begin()
+                        destPathName = os.path.join(destPath, newFileNameExt)
 
-    for srcdir in env.sourceDirs:
-        spf, ssf = process_source_dir(env, ui, srcdir)
+                        if os.path.exists(destPathName):
+                            if env.ifFileExists == env.FEXIST_SKIP:
+                                ui.job_warning('файл "%s" уже существует, пропускаю' % newFileNameExt)
+                                statSkippedFiles += 1
+                                continue
+                            elif env.ifFileExists == env.FEXIST_RENAME:
+                                # пытаемся подобрать незанятое имя
 
-        statProcessedFiles += spf
-        statSkippedFiles += ssf
+                                canBeRenamed = False
 
-    ui.job_end('Всего файлов %s: %d, пропущено: %d' % (env.modeMessages.statmsg, statProcessedFiles, statSkippedFiles))
+                                # нефиг больше 10 повторов... и 10-то много
+                                for unum in range(1, 11):
+                                    destPathName = os.path.join(destPath, '%s-%d%s' % (newFileName, unum, newFileExt))
+
+                                    if not os.path.exists(destPathName):
+                                        canBeRenamed = True
+                                        break
+
+                                if not canBeRenamed:
+                                    ui.job_error('в каталоге "%s" слишком много файлов с именем %s*%s' % (destPath, newFileName, newFileExt))
+
+                                    statSkippedFiles += 1
+                                    continue
+
+                            # else:
+                            # env.FEXIST_OVERWRITE - перезаписываем
+
+                        #
+                        # а вот теперь копируем или перемещаем файл
+                        #
+
+                        try:
+                            env.modeFileOp(srcPathName, destPathName)
+                            statProcessedFiles += 1
+                        except (IOError, os.error) as emsg:
+                            skippedFiles += 1
+                            ui.job_error(u'не удалось % файл - %s' % (env.modeMessages.errmsg, emsg))
+
+    return ('Всего файлов: %d' % statTotalFiles,
+        '%s: %d' % (env.modeMessages.statmsg, statProcessedFiles),
+        'пропущено: %d' % statSkippedFiles)
 
 
 def main(args):
     ui = None
     try:
         mode, gui = Environment.detect_work_mode(args[0])
-        gui = True #!!!
+        env = Environment(args, mode, gui)
 
-        if gui:
+        if env.GUImode:
             from pmvgtkui import GTKUI as UIClass
         else:
             from pmvtermui import TerminalUI as UIClass
 
-        env = Environment(args, mode, gui)
-
-        ui = UIClass(env, process_task)
+        ui = UIClass(env, process_files)
         ui.run()
 
     except Exception as ex:

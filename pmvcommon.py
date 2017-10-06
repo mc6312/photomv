@@ -19,7 +19,7 @@
 
 
 TITLE = 'PhotoMV'
-VERSION = '1.1.0'
+VERSION = '1.1.1'
 
 
 import os, os.path
@@ -63,7 +63,23 @@ def normalize_filename(s):
     return ''.join(map(lambda c: '_' if c in INVALID_FNAME_CHARS else c, s))
 
 
+def same_dir(dir1, dir2):
+    """Возвращает True, если оба параметра указывают на один каталог,
+    или один является подкаталогом другого.
+    Для правильности проверки оба пути должны быть абсолютными."""
+
+    dir1 = os.path.abspath(dir1)
+    dir2 = os.path.abspath(dir2)
+
+    if dir1 == dir2: #os.path.samefile(dir1, dir2):
+        return True
+
+    r = os.path.normpath(os.path.commonprefix((dir1, dir2)))
+    return r == dir1 or r == dir2
+    #return os.path.samefile(r, dir1) or os.path.samefile(r, dir2)
+
+
 if __name__ == '__main__':
     print('[%s test]' % __file__)
 
-    print(normalize_filename('/some/filename:text'))
+    #print(normalize_filename('/some/filename:text'))

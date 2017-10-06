@@ -25,13 +25,21 @@ class UserInterface():
     def __init__(self, env, worker):
         """Инициализация междумордия.
         env - экземпляр pmvconfig.Environment
-        worker - функция вида worker(env, ui), выполняющая собственно
+        worker - функция вида worker(env, ui, srcDirs), выполняющая собственно
             работу с файлами
             где:
             env     - экземпляр класса pmvconfig.Environment
             ui      - экземпляром класса UserInterface, из которого
                       вызвана функция (т.е. self)
-            функция может (и должна) вызывать методы job_xxx() из ui.
+            srcDirs - список исходных каталогов;
+                      если None или пустой список - ф-я должна использовать
+                      список env.sourceDirs
+
+            Функция может (и должна) вызывать методы job_xxx() из ui.
+
+            Возвращает список строк (м.б. пустым), которые программа
+            отобразит впоследствии.
+
             В случае ошибок ф-я должна генерировать исключения."""
 
         self.env = env
@@ -41,13 +49,6 @@ class UserInterface():
         """Запуск междумордия."""
 
         raise NotImplementedError('%s.run() not implemented')
-
-    def job_begin(self, msg=''):
-        """Начало работы.
-        Отображение сообщения msg и др. действия, например блокировка
-        интерфейса в случае GTK."""
-
-        raise NotImplementedError('%s.job_begin() not implemented')
 
     def job_show_dir(self, dirname=''):
         """Отображение текущего каталога."""
@@ -62,17 +63,15 @@ class UserInterface():
 
         raise NotImplementedError('%s.job_progress() not implemented')
 
-    def job_end(self, msg=''):
-        """Завершение работы.
-        Отображение сообщения msg и др. действия, например разблокировка
-        интерфейса в случае GTK."""
-
-        raise NotImplementedError('%s.job_end() not implemented')
-
     def job_error(self, msg):
         """Неблокирующее (немодальное) отображение сообщения об ошибке msg."""
 
         raise NotImplementedError('%s.job_error() not implemented')
+
+    def job_warning(self, msg):
+        """Отображение предупреждения msg."""
+
+        raise NotImplementedError('%s.job_warning() not implemented')
 
     def critical_error(self, msg):
         """Блокирующее (модальное) отображение сообщения об ошибке msg."""
