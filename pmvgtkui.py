@@ -83,13 +83,18 @@ def new_list_view(*coldefs):
 
 
 class GTKUI(UserInterface):
-    PAGE_START, PAGE_JOB, PAGE_FINAL = range(3)
+    PAGE_START, PAGE_JOB = range(2)
 
     SDLC_CHECK, SDLC_SRCDIR = range(2)
 
+    MAX_MESSAGES = 2000
+
     def destroy(self, widget, data=None):
-        if not self.isWorking:
-            Gtk.main_quit()
+        Gtk.main_quit()
+
+    def delete_event(self, widget, event):
+        # блокируем кнопку закрытия, пока задание не завершилось
+        return self.isWorking
 
     def __init__(self, env, worker):
         super().__init__(env, worker)
@@ -101,6 +106,7 @@ class GTKUI(UserInterface):
         #
         self.window = Gtk.ApplicationWindow(Gtk.WindowType.TOPLEVEL)
         self.window.connect('destroy', self.destroy)
+        self.window.connect('delete-event', self.delete_event)
 
         self.window.set_icon(self.window.render_icon(Gtk.STOCK_EXECUTE, Gtk.IconSize.DIALOG))
 
@@ -182,28 +188,15 @@ class GTKUI(UserInterface):
         jobpagebox = Gtk.VBox(spacing=WIDGET_SPACING)
         self.pages.append_page(jobpagebox, None)
 
-        self.dirtxt = Gtk.Label('')
-        jobpagebox.pack_start(self.dirtxt, False, False, 0)
+        sw, self.msglstore, self.msglview,\
+        _cls, _crs = new_list_view((Pixbuf, False), (GObject.TYPE_STRING, True))
+        self.msglvsel = self.msglview.get_selection()
 
-        self.msgtxt = Gtk.Label('')
-        jobpagebox.pack_start(self.msgtxt, False, False, 0)
-
-        self.errortxt = Gtk.Label('')
-        jobpagebox.pack_end(self.errortxt, False, False, 0)
+        jobpagebox.pack_start(sw, True, True, 0)
 
         self.progbar = Gtk.ProgressBar()
         self.progbar.set_show_text(True)
         jobpagebox.pack_end(self.progbar, False, False, 0)
-
-        #
-        # финальная страница (PAGE_FINAL)
-        #
-
-        finpagebox = Gtk.VBox(spacing=WIDGET_SPACING)
-        self.pages.add(finpagebox)
-
-        self.finaltext = Gtk.Label('Конец мучениям')
-        finpagebox.pack_start(self.finaltext, True, True, 0)
 
         #
         # управление
@@ -220,11 +213,27 @@ class GTKUI(UserInterface):
         btnexit.connect('clicked', self.destroy)
         self.ctlhbox.pack_end(btnexit, False, False, 0)
         #
+        self.pages.set_current_page(self.PAGE_START)
 
         self.window.show_all()
 
+    def job_message(self, icon, txt):
+        self.msglstore.append((icon, txt))
+
+        count = self.msglstore.iter_n_children(None)
+        if count > self.MAX_MESSAGES:
+            self.msglstore.remove(self.msglstore.get_iter_first())
+            count -= 1
+
+        last = self.msglstore.iter_nth_child(None, count - 1)
+
+        self.msglvsel.select_iter(last)
+        self.msglview.scroll_to_cell(self.msglstore.get_path(last),
+            None, False, 0, 0)
+
     def exec_job(self):
         self.ctlhbox.set_sensitive(False)
+        self.isWorking = True
         try:
             self.btnstart.set_sensitive(False)
             self.btnstart.set_visible(False)
@@ -234,20 +243,17 @@ class GTKUI(UserInterface):
             try:
                 fmsgs = self.worker(self.env, self)
 
-                self.finaltext.set_text('\n'.join(fmsgs))
+                for msg in fmsgs:
+                    self.job_message(None, msg)
 
-                es = None
             except Exception as ex:
-                es = 'Ошибка: %s' % str(ex)
-
-            if es:
-                self.finaltext.set_text(es)
-
-            self.pages.set_current_page(self.PAGE_FINAL)
+                self.job_error('Ошибка: %s' % str(ex))
 
         finally:
-            #self.progbar.set_fraction(1.0)
+            self.progbar.set_fraction(0.0)
+            self.progbar.set_text('')
             self.ctlhbox.set_sensitive(True)
+            self.isWorking = False
             #self.destroy(btn)
 
     def run(self):
@@ -260,7 +266,7 @@ class GTKUI(UserInterface):
 
     def job_show_dir(self, dirname=''):
         if self.env.showSrcDir and dirname:
-            self.dirtxt.set_text(dirname)
+            self.job_message(self.iconDirectory, dirname)
 
     def job_progress(self, progress, msg=''):
         self.progbar.set_text(msg)
@@ -271,10 +277,10 @@ class GTKUI(UserInterface):
         self.task_events()
 
     def job_error(self, msg):
-        self.errortxt.set_text(msg)
+        self.job_message(self.iconError, msg)
 
     def job_warning(self, msg):
-        self.errortxt.set_text(msg)
+        self.job_message(self.iconWarning, msg)
 
     def critical_error(self, msg):
         msg_dialog(self.window, self.window.get_title(), msg)
@@ -295,14 +301,14 @@ if __name__ == '__main__':
 
     def worker(env, ui):
         try:
-            for i in range(10):
-                ui.job_show_dir('directory')
+            for i in range(20):
+                ui.job_show_dir('directory #%d' % i)
 
                 #raise ValueError('test exception')
 
                 pg = i / 10.0
                 ui.job_progress(pg, 'working, %.1g' % pg)
-                sleep(1)
+                sleep(0.5)
 
             return ['Проверочное', 'сообщение']
 
@@ -310,6 +316,7 @@ if __name__ == '__main__':
             ui.critical_error(str(ex))
 
     env = Environment(['photomv'], True, True)
+    env.showSrcDir = True
     ui = GTKUI(env, worker)
 
     try:
