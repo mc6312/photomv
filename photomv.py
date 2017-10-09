@@ -151,9 +151,9 @@ def process_files(env, ui, srcDirs=None):
                             skippedFiles += 1
                             ui.job_error(u'не удалось % файл - %s' % (env.modeMessages.errmsg, emsg))
 
-    return ('Всего файлов: %d' % statTotalFiles,
-        '%s: %d' % (env.modeMessages.statmsg, statProcessedFiles),
-        'пропущено: %d' % statSkippedFiles)
+    return ('Всего файлов: %d\n%s: %d\nпропущено: %d' % (statTotalFiles,
+        env.modeMessages.statmsg, statProcessedFiles,
+        statSkippedFiles),)
 
 
 def main(args):

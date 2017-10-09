@@ -30,6 +30,37 @@ from gi.repository.GdkPixbuf import Pixbuf
 WIDGET_SPACING = 4
 
 
+def choose_directory(parent, title, create, dirpath=None):
+    """Диалог выбора каталога.
+
+    parent  - экземпляр Gtk.Window
+    title   - строка заголовка
+    create  - булевское значение: создавать ли каталог
+    dirpath - каталог, с которого начинать выбор
+              или None.
+
+    При выборе каталога и нажатии "ОК" возвращает выбранный каталог,
+    иначе возвращает None."""
+
+    dlg = Gtk.FileChooserDialog(title, parent,
+        Gtk.FileChooserAction.SELECT_FOLDER,
+        (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_OK, Gtk.ResponseType.OK))
+    dlg.set_create_folders(create)
+
+    if dirpath:
+        dlg.set_current_folder(dirpath)
+
+    ret = None
+    r = dlg.run()
+
+    if r == Gtk.ResponseType.OK:
+        ret = dlg.get_current_folder()
+
+    dlg.destroy()
+
+    return ret
+
+
 def new_list_view(*coldefs):
     """Создаёт Gtk.TreeView.
 
@@ -56,10 +87,11 @@ def new_list_view(*coldefs):
             crndr = Gtk.CellRendererToggle()
             crndrpar = 'active'
         elif cdtype == GObject.TYPE_STRING:
-            crndr = Gtk.CellRendererText()
+            crndr = Gtk.CellRendererText(wrap_mode=Pango.WrapMode.WORD_CHAR)
             crndrpar = 'text'
         elif cdtype == Pixbuf:
             crndr = Gtk.CellRendererPixbuf()
+            crndr.set_alignment(0.0, 0.0)
             crndrpar = 'pixbuf'
         else:
             raise ValueError('new_list_view(): invalid type of column %d' % colix)
@@ -143,7 +175,28 @@ class GTKUI(UserInterface):
 
             return hbox
 
+        #
+        # режим
+        #
+
+        modebox = Gtk.HBox(spacing=WIDGET_SPACING)
+        startpagebox.pack_start(modebox, False, False, 0)
+
+        modebox.pack_start(Gtk.Label('Режим:'), False, False, 0)
+
+        moderbtncopy = Gtk.RadioButton.new_with_label(None, 'копирование')
+        moderbtncopy.connect('toggled', self.moderbtn_toggled, False)
+        modebox.pack_start(moderbtncopy, False, False, 0)
+
+        moderbtnmove = Gtk.RadioButton.new_with_label_from_widget(moderbtncopy, 'перемещение')
+        moderbtnmove.connect('toggled', self.moderbtn_toggled, True)
+        modebox.pack_start(moderbtnmove, False, False, 0)
+
+        moderbtnmove.set_active(self.env.modeMoveFiles)
+
+        #
         # env.sourceDirs
+        #
         sdlisthbox = framehbox('Исходные каталоги', True)
 
         # список исходных каталогов
@@ -154,6 +207,14 @@ class GTKUI(UserInterface):
             self.srcdirlist.append((True, sd))
 
         sdlisthbox.pack_start(sw, True, True, 0)
+
+        sdlistvbox = Gtk.VBox(spacing=WIDGET_SPACING)
+        sdlisthbox.pack_end(sdlistvbox, False, False, 0)
+
+        for sicon, handler in (('edit-add', self.sdlist_add), ('edit-delete', self.sdlist_delete)):
+            btn = Gtk.Button.new_from_icon_name(sicon, Gtk.IconSize.SMALL_TOOLBAR)
+            btn.connect('clicked', handler)
+            sdlistvbox.pack_start(btn, False, False, 0)
 
         # env.destinationDir
         ddirhbox = framehbox('Каталог назначения', False)
@@ -166,6 +227,7 @@ class GTKUI(UserInterface):
         ddirhbox.pack_start(self.destdirentry, True, True, 0)
 
         ddbtn = Gtk.Button('…')
+        ddbtn.connect('clicked', self.ddbtn_clicked)
         ddirhbox.pack_start(ddbtn, False, False, 0)
 
         # настройки
@@ -179,6 +241,7 @@ class GTKUI(UserInterface):
             self.cboxifexists.append_text(sieopt)
 
         self.cboxifexists.set_active(env.ifFileExists)
+        self.cboxifexists.connect('changed', self.cboxifexists_changed)
 
         opthbox.pack_start(self.cboxifexists, False, False, 0)
 
@@ -217,6 +280,25 @@ class GTKUI(UserInterface):
 
         self.window.show_all()
 
+    def sdlist_add(self, btn):
+        print('sdlist_add()')
+
+    def sdlist_delete(self, btn):
+        print('sdlist_delete()')
+
+    def cboxifexists_changed(self, cbox):
+        self.env.ifFileExists = cbox.get_active()
+
+    def ddbtn_clicked(self, btn):
+        ddir = choose_directory(self.window, 'Каталог назначения', True, env.destinationDir)
+        if ddir:
+            self.env.destinationDir = ddir
+            self.destdirentry.set_text(ddir)
+
+    def moderbtn_toggled(self, rbtn, modeMove):
+        if rbtn.get_active():
+            self.env.modeMoveFiles = modeMove
+
     def job_message(self, icon, txt):
         self.msglstore.append((icon, txt))
 
@@ -234,6 +316,9 @@ class GTKUI(UserInterface):
     def exec_job(self):
         self.ctlhbox.set_sensitive(False)
         self.isWorking = True
+
+        self.env.setup_work_mode()
+
         try:
             self.btnstart.set_sensitive(False)
             self.btnstart.set_visible(False)
@@ -301,19 +386,22 @@ if __name__ == '__main__':
 
     def worker(env, ui):
         try:
-            for i in range(20):
-                ui.job_show_dir('directory #%d' % i)
+            N = 20
+            for i in range(N):
+                ui.job_show_dir('directory #%d\nsome text' % i)
 
                 #raise ValueError('test exception')
 
-                pg = i / 10.0
+                pg = float(i) / N
                 ui.job_progress(pg, 'working, %.1g' % pg)
                 sleep(0.5)
 
             return ['Проверочное', 'сообщение']
 
         except Exception as ex:
-            ui.critical_error(str(ex))
+            #ui.critical_error(str(ex))
+            ui.job_error(str(ex))
+            return []
 
     env = Environment(['photomv'], True, True)
     env.showSrcDir = True

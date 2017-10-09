@@ -145,6 +145,16 @@ class Environment():
 
         return (modeMoveFiles, bnamecmd in (Environment.MODE_MOVE_GUI, Environment.MODE_COPY_GUI))
 
+    def setup_work_mode(self):
+        """Вызывать после изменения workModeMove (напр. из GUI)"""
+
+        if self.modeMoveFiles:
+            self.modeMessages = workmodemsgs('переместить', 'перемещено')
+            self.modeFileOp = shutil.move
+        else:
+            self.modeMessages = workmodemsgs('скопировать', 'скопировано')
+            self.modeFileOp = shutil.copy
+
     def __init__(self, args, workModeMove, guiMode):
         """Разбор командной строки, поиск и загрузка файла конфигурации.
 
@@ -161,12 +171,8 @@ class Environment():
         self.modeMoveFiles = workModeMove
         self.GUImode = guiMode
 
-        if workModeMove:
-            self.modeMessages = workmodemsgs('переместить', 'перемещено')
-            self.modeFileOp = shutil.move
-        else:
-            self.modeMessages = workmodemsgs('скопировать', 'скопировано')
-            self.modeFileOp = shutil.copy
+        self.modeMessages = None
+        self.modeFileOp = None
 
         # каталог, из которого копируются (или перемещаются) изображения
         self.sourceDirs = []
@@ -247,10 +253,16 @@ class Environment():
                     self.GUImode = True
                 elif arg in ('-n', '--no-gui'):
                     self.GUImode = False
+                elif arg in ('-c', '--copy'):
+                    self.workModeMove = False
+                elif arg in ('-m', '--move'):
+                    self.workModeMove = True
                 else:
                     raise self.Error(self.E_CMDLINE % (argnum, 'параметр "%s" не поддерживается' % arg))
             else:
                 raise self.Error(self.E_CMDLINE % (argnum, 'ненужное имя файла'))
+
+        self.setup_work_mode()
 
     def __read_config_paths(self):
         """Разбор секции paths файла настроек"""
