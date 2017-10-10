@@ -78,6 +78,13 @@ class UserInterface():
 
         raise NotImplementedError('%s.critical_error() not implemented')
 
+    @staticmethod
+    def show_fatal_error(msg):
+        """Сообщение о критической ошибке.
+        Этот метод следует использовать, если ошибка произошла до
+        инициализации интерфейса."""
+
+        print('* %s' % msg)
 
 if __name__ == '__main__':
     print('[%s test]' % __file__)

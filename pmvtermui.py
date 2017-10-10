@@ -28,7 +28,7 @@ class TerminalUI(UserInterface):
     def __init__(self, env, worker):
         super().__init__(env, worker)
 
-        print('%s v%s\n' % (TITLE, VERSION))
+        print(TITLE_VERSION)
 
         self.printIndent = '  ' if env.showSrcDir else ''
 
@@ -52,9 +52,13 @@ class TerminalUI(UserInterface):
     def critical_error(self, msg):
         print('* %s' % msg)
 
+    @staticmethod
+    def show_fatal_error(msg):
+        print('* %s' % msg)
+
 
 if __name__ == '__main__':
     print('[%s test]' % __file__)
 
-    env = Environment(sys.argv, True, False)
+    env = Environment(sys.argv)
     ui = TerminalUI(env, lambda e,ui: [])

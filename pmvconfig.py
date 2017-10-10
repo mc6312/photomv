@@ -114,37 +114,6 @@ class Environment():
     E_CONFIG = 'Ошибка обработки файла настроек - %s'
     E_CMDLINE = 'параметр %d командной строки: %s'
 
-    @staticmethod
-    def detect_work_mode(arg0):
-        """Определение режима работы по имени исполняемого файла программы arg0
-        (берется из sys.argv[0]).
-
-        Возвращает кортеж из двух булевских значений:
-        1. режим работы - перемещение (True) или копирование (False);
-        2. режим интерфейса - GTK (True) или консоль (False).
-
-        В случае ошибки (не удалось определить режим) возвращает кортеж
-        из двух None."""
-
-        #
-        # определяем, кто мы такое
-        #
-        bname = os.path.basename(arg0)
-
-        # имя того, что запущено, в т.ч. если вся куча засунута
-        # в архив ZIP
-
-        bnamecmd = os.path.splitext(bname)[0].lower()
-
-        if bnamecmd in (Environment.MODE_MOVE, Environment.MODE_MOVE_GUI):
-            modeMoveFiles = True
-        elif bnamecmd in (Environment.MODE_COPY, Environment.MODE_COPY_GUI):
-            modeMoveFiles = False
-        else:
-            raise Environment.Error('Меня зовут %s, и я не знаю, что делать.' % bname)
-
-        return (modeMoveFiles, bnamecmd in (Environment.MODE_MOVE_GUI, Environment.MODE_COPY_GUI))
-
     def setup_work_mode(self):
         """Вызывать после изменения workModeMove (напр. из GUI)"""
 
@@ -155,21 +124,23 @@ class Environment():
             self.modeMessages = workmodemsgs('скопировать', 'скопировано')
             self.modeFileOp = shutil.copy
 
-    def __init__(self, args, workModeMove, guiMode):
+    def __init__(self, args):
         """Разбор командной строки, поиск и загрузка файла конфигурации.
 
-        args            - аргументы командной строки (список строк)
-        workModeMove    - режим работы - перемещение (True) или копирование (False)
-        guiMode         - режим интерфейса - GTK (True) или консоль (False)
+        args            - аргументы командной строки (список строк),
+                          например, значение sys.argv
 
-        В случае ошибок генерирует исключения.
-        Исключение Environment.Error должно обрабатываться в программе."""
+        В первую очередь пытается определить режим работы
+        (перемещение/копирование), и режим интерфейса (консоль/графика).
+
+        В случае успеха self.error устанавливается в None.
+        В случае ошибок присваивает self.error строку с сообщением об ошибке."""
 
         #
         # параметры
         #
-        self.modeMoveFiles = workModeMove
-        self.GUImode = guiMode
+        self.modeMoveFiles = None
+        self.GUImode = False
 
         self.modeMessages = None
         self.modeFileOp = None
@@ -200,69 +171,160 @@ class Environment():
         self.templates = {}
 
         #
-        # ищем файл конфигурации
+        # см. далее except!
         #
-        self.configPath = self.__get_config_path(args[0])
-        self.cfg = PMVRawConfigParser()
+        self.error = None
 
-        with open(self.configPath, 'r', encoding=ENCODING) as f:
-            try:
-                self.cfg.read_file(f)
-            except ConfigParserError as ex:
-                raise self.Error(self.E_CONFIG % str(ex))
+        try:
+            # определение режима работы - делаем в самом начале,
+            # т.к. нужно сразу знать, как именно показывать сообщения
+            # об ошибках
+            # __detect_work_mode() по возможности НЕ должно генерировать
+            # исключений!
+            self.__detect_work_mode(args)
+            self.setup_work_mode()
 
-        # прочие исключения пока исключения не проверяем.
-        # в документации об обработке ошибок чтения что-то мутно
+            #
+            # ищем файл конфигурации
+            #
+            self.configPath = self.__get_config_path(args[0])
+            self.cfg = PMVRawConfigParser()
+
+            with open(self.configPath, 'r', encoding=ENCODING) as f:
+                try:
+                    self.cfg.read_file(f)
+                except ConfigParserError as ex:
+                    raise self.Error(self.E_CONFIG % str(ex))
+
+            # прочие исключения пока исключения не проверяем.
+            # в документации об обработке ошибок чтения что-то мутно
+
+            #
+            # выгребаем настройки
+            #
+
+            if self.cfg.has_section(self.SEC_PATHS):
+                self.__read_config_paths()
+            else:
+                raise self.Error(self.E_NOSECTION % (self.configPath, self.SEC_PATHS))
+
+            if self.cfg.has_section(self.SEC_OPTIONS):
+                self.__read_config_options()
+            else:
+                raise self.Error(self.E_NOSECTION % (self.configPath, self.SEC_OPTIONS))
+
+            #
+            # сокращённые имена камер
+            #
+
+            if self.cfg.has_section(self.SEC_ALIASES):
+                self.__read_config_aliases()
+
+            #
+            # шаблоны
+            #
+
+            if self.cfg.has_section(self.SEC_TEMPLATES):
+                self.__read_config_templates()
+
+            #
+            # ...а вот теперь - разгребаем командную строку, т.к. ее параметры
+            # перекрывают файл настроек
+            #
+
+            self.__parse_cmdline_options(args)
+
+        except self.Error as ex:
+            # конструктор НЕ ДОЛЖЕН падать от self.Error - оно будет
+            # обработано снаружи по содержимому self.error
+            # с прочими исключениями - падаем, ибо это предположительно
+            # что-то более серьёзное
+            # на этом этапе поля self.modeMoveFiles,
+            # self.GUImode уже установлены в известные значения
+            # и сообщение об ошибке где-то снаружи должно быть показано
+            # в правильном режиме
+            self.error = str(ex)
+
+    CMDOPT_GUI = {'-g', '--gui'}
+    CMDOPT_NOGUI = {'-n', '--no-gui'}
+    CMDOPT_COPY = {'-c', '--copy'}
+    CMDOPT_MOVE = {'-m', '--move'}
+    CMDOPTS_WORKMODE = CMDOPT_COPY | CMDOPT_MOVE | CMDOPT_GUI | CMDOPT_NOGUI
+    __CMDOPT_IF_EXISTS_SHORT = '-e'
+    CMDOPT_IF_EXISTS = {__CMDOPT_IF_EXISTS_SHORT, '--if-exists'}
+
+    def __detect_work_mode(self, args):
+        """Определение режима работы (перемещение/копирование,
+        консольный/графический) по имени исполняемого файла и/или
+        по ключам командной строки."""
 
         #
-        # выгребаем настройки
+        # определяем, кто мы такое
         #
+        bname = os.path.basename(args[0])
 
-        if self.cfg.has_section(self.SEC_PATHS):
-            self.__read_config_paths()
+        # имя того, что запущено, в т.ч. если вся куча засунута
+        # в архив ZIP
+
+        bnamecmd = os.path.splitext(bname)[0].lower()
+
+        if bnamecmd in (Environment.MODE_MOVE, Environment.MODE_MOVE_GUI):
+            self.modeMoveFiles = True
+        elif bnamecmd in (Environment.MODE_COPY, Environment.MODE_COPY_GUI):
+            self.modeMoveFiles = False
         else:
-            raise self.Error(self.E_NOSECTION % (self.configPath, self.SEC_PATHS))
+            # ругаться будем потом, если режим не указан в командной строке
+            self.modeMoveFiles = None
 
-        if self.cfg.has_section(self.SEC_OPTIONS):
-            self.__read_config_options()
-        else:
-            raise self.Error(self.E_NOSECTION % (self.configPath, self.SEC_OPTIONS))
+        self.GUImode = bnamecmd in (Environment.MODE_MOVE_GUI, Environment.MODE_COPY_GUI)
+        # а в непонятных случаях будем считать, что режим морды - консольный
 
-        #
-        # сокращённые имена камер
-        #
+        # предварительный и ограниченный разбор параметров командной строки
+        # нужен для определения gui/nogui ДО создания экземпляра Environment,
+        # чтобы знать, как отображать потом сообщения об ошибках
+        # копирование/перемещение определяем тут же, раз уж именно здесь
+        # определяли его по имени исполняемого файла
+        for arg in args[1:]:
+            if arg.startswith('-'):
+                if arg in self.CMDOPT_GUI:
+                    self.GUImode = True
+                elif arg in self.CMDOPT_NOGUI:
+                    self.GUImode = False
+                elif arg in self.CMDOPT_MOVE:
+                    self.modeMoveFiles = True
+                elif arg in self.CMDOPT_COPY:
+                    self.modeMoveFiles = False
+                # на неизвестные опции ругаемся не здесь, а в __parse_cmdline_options()
 
-        if self.cfg.has_section(self.SEC_ALIASES):
-            self.__read_config_aliases()
+        if self.modeMoveFiles is None:
+            raise Environment.Error('Меня зовут %s, и я не знаю, что делать.' % bname)
 
-        #
-        # шаблоны
-        #
+    def __parse_cmdline_options(self, args):
+        """Разбор аргументов командной строки"""
 
-        if self.cfg.has_section(self.SEC_TEMPLATES):
-            self.__read_config_templates()
-
-        #
-        # ...а вот теперь - разгребаем командную строку, т.к. ее параметры
-        # перекрывают файл настроек
-        #
+        carg = None
 
         for argnum, arg in enumerate(args[1:], 1):
-            if arg.startswith('-'):
-                if arg in ('-g', '--gui'):
-                    self.GUImode = True
-                elif arg in ('-n', '--no-gui'):
-                    self.GUImode = False
-                elif arg in ('-c', '--copy'):
-                    self.workModeMove = False
-                elif arg in ('-m', '--move'):
-                    self.workModeMove = True
+            if carg:
+                if carg in self.CMDOPT_IF_EXISTS:
+                    if arg in self.FEXIST_OPTIONS:
+                        self.ifFileExists = self.FEXIST_OPTIONS[arg]
+                    else:
+                        raise self.Error(self.E_CMDLINE % (argnum, 'недопустимое значение параметра "%s"' % carg))
+                carg = None
+            elif arg.startswith('-'):
+                if arg in self.CMDOPTS_WORKMODE:
+                    # режим междумордия и работы с файлами был определён ранее, вызовом __detect_work_mode()
+                    pass
+                elif arg in self.CMDOPT_IF_EXISTS:
+                    carg = self.__CMDOPT_IF_EXISTS_SHORT
                 else:
                     raise self.Error(self.E_CMDLINE % (argnum, 'параметр "%s" не поддерживается' % arg))
             else:
                 raise self.Error(self.E_CMDLINE % (argnum, 'ненужное имя файла'))
 
-        self.setup_work_mode()
+        if carg:
+            raise self.Error(self.E_CMDLINE % (argnum, 'не указано значение параметра "%s"' % carg))
 
     def __read_config_paths(self):
         """Разбор секции paths файла настроек"""
@@ -412,6 +474,24 @@ class Environment():
 
         return cfgpath
 
+    def save(self):
+        """Сохранение настроек.
+        В случае ошибки генерирует исключение."""
+
+        # секция paths
+        self.cfg.set(self.SEC_PATHS, self.OPT_SRC_DIRS, ':'.join(self.sourceDirs))
+        self.cfg.set(self.SEC_PATHS, self.OPT_DEST_DIR, self.destinationDir)
+
+        # секция options
+        self.cfg.set(self.SEC_OPTIONS, self.OPT_IF_EXISTS, self.FEXISTS_OPTIONS_STR[self.ifFileExists])
+        self.cfg.set(self.SEC_OPTIONS, self.OPT_SHOW_SRC_DIR, str(self.showSrcDir))
+
+        # секции aliases и templates не трогаем, т.к. они из гуя не изменяются
+
+        # сохраняем
+        with open(self.configPath, 'w+', encoding=ENCODING) as f:
+            self.cfg.write(f)
+
     def get_template(self, cameraModel):
         """Получение экземпляра pmvtemplates.FileNameTemplate для
         определённой камеры.
@@ -439,7 +519,7 @@ modeMessages = %s
 modeFileOp = %s
 sourceDirs = %s
 destinationDir = "%s"
-ifFileExists = %d
+ifFileExists = %s
 showSrcDir = %s
 aliases = %s
 templates = %s''' % (self.cfg,
@@ -447,7 +527,7 @@ templates = %s''' % (self.cfg,
     self.modeMessages,
     self.modeFileOp,
     str(self.sourceDirs), self.destinationDir,
-    self.ifFileExists,
+    self.FEXISTS_OPTIONS_STR[self.ifFileExists],
     self.showSrcDir,
     self.aliases,
     ', '.join(map(str, self.templates.values())))
@@ -457,9 +537,12 @@ if __name__ == '__main__':
     print('[%s test]' % __file__)
 
     try:
-        mode, gui = Environment.detect_work_mode('photocpg.py')
-        env = Environment(sys.argv, mode, gui)
-        print(env.configPath)
+        sys.argv[0] = 'photocpgi.py'
+        print(sys.argv)
+        env = Environment(sys.argv)
+        if env.error:
+            raise Exception(env.error)
+        #env.save()
     except Environment.Error as ex:
         print('** %s' % str(ex))
         exit(1)

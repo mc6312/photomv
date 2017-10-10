@@ -159,24 +159,22 @@ def process_files(env, ui, srcDirs=None):
 def main(args):
     ui = None
     try:
-        mode, gui = Environment.detect_work_mode(args[0])
-        env = Environment(args, mode, gui)
+        env = Environment(args)
 
         if env.GUImode:
             from pmvgtkui import GTKUI as UIClass
         else:
             from pmvtermui import TerminalUI as UIClass
 
+        if env.error:
+            # см. Environment.__init__()
+            raise Exception(env.error)
+
         ui = UIClass(env, process_files)
         ui.run()
 
     except Exception as ex:
-        es = str(ex)
-
-        if ui:
-            ui.critical_error(es)
-        else:
-            print('* Ошибка: %s' % es)
+        UIClass.show_fatal_error(str(ex))
 
         return 1
 

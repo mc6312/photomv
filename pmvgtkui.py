@@ -146,7 +146,7 @@ class GTKUI(UserInterface):
         self.iconError = self.window.render_icon(Gtk.STOCK_DIALOG_ERROR, Gtk.IconSize.MENU)
         self.iconWarning = self.window.render_icon(Gtk.STOCK_DIALOG_WARNING, Gtk.IconSize.MENU)
 
-        self.window.set_title('%s v%s' % (TITLE, VERSION))
+        self.window.set_title(TITLE_VERSION)
 
         _b, icx, icy = Gtk.IconSize.lookup(Gtk.IconSize.SMALL_TOOLBAR)
 
@@ -192,7 +192,8 @@ class GTKUI(UserInterface):
         moderbtnmove.connect('toggled', self.moderbtn_toggled, True)
         modebox.pack_start(moderbtnmove, False, False, 0)
 
-        moderbtnmove.set_active(self.env.modeMoveFiles)
+        rbtn = moderbtnmove if self.env.modeMoveFiles else moderbtncopy
+        rbtn.set_active(self.env.modeMoveFiles)
 
         #
         # env.sourceDirs
@@ -202,6 +203,7 @@ class GTKUI(UserInterface):
         # список исходных каталогов
         sw, self.srcdirlist, self.srcdirlv,\
         _cols, _crndrs = new_list_view((GObject.TYPE_BOOLEAN, False), (GObject.TYPE_STRING, True))
+        self.srcdirlvsel = self.srcdirlv.get_selection()
 
         for sd in env.sourceDirs:
             self.srcdirlist.append((True, sd))
@@ -281,19 +283,47 @@ class GTKUI(UserInterface):
         self.window.show_all()
 
     def sdlist_add(self, btn):
-        print('sdlist_add()')
+        SSDIR = 'Исходный каталог'
+
+        sdir = choose_directory(self.window, SSDIR, False)
+        if sdir:
+            if self.env.same_src_dir(sdir):
+                msg_dialog(self.window, SSDIR,
+                    'Выбранный каталог совпадает с одним из исходных каталогов',
+                    Gtk.MessageType.ERROR)
+            elif same_dir(sdir, self.env.destinationDir):
+                msg_dialog(self.window, SSDIR,
+                    'Выбранный каталог совпадает с каталогом назначения',
+                    Gtk.MessageType.ERROR)
+            else:
+                self.env.sourceDirs.append(sdir)
+                self.srcdirlist.append((True, sdir))
+
+    def get_selected_srcdir_iter(self):
+        return self.srcdirlvsel.get_selected()[1]
 
     def sdlist_delete(self, btn):
-        print('sdlist_delete()')
+        itrs = self.get_selected_srcdir_iter()
+        if itrs:
+            ix = self.srcdirlist.get_path(itrs).get_indices()[0]
+            del self.env.sourceDirs[ix]
+            self.srcdirlist.remove(itrs)
 
     def cboxifexists_changed(self, cbox):
         self.env.ifFileExists = cbox.get_active()
 
     def ddbtn_clicked(self, btn):
-        ddir = choose_directory(self.window, 'Каталог назначения', True, env.destinationDir)
+        SDDIR = 'Каталог назначения'
+
+        ddir = choose_directory(self.window, SDDIR, True, env.destinationDir)
         if ddir:
-            self.env.destinationDir = ddir
-            self.destdirentry.set_text(ddir)
+            if self.env.same_src_dir(ddir):
+                msg_dialog(self.window, SDDIR,
+                    'Выбранный каталог совпадает с одним из исходных каталогов',
+                    Gtk.MessageType.ERROR)
+            else:
+                self.env.destinationDir = ddir
+                self.destdirentry.set_text(ddir)
 
     def moderbtn_toggled(self, rbtn, modeMove):
         if rbtn.get_active():
@@ -318,6 +348,7 @@ class GTKUI(UserInterface):
         self.isWorking = True
 
         self.env.setup_work_mode()
+        self.env.save()
 
         try:
             self.btnstart.set_sensitive(False)
@@ -370,6 +401,10 @@ class GTKUI(UserInterface):
     def critical_error(self, msg):
         msg_dialog(self.window, self.window.get_title(), msg)
 
+    @staticmethod
+    def show_fatal_error(msg):
+        msg_dialog(None, '%s - ошибка' % TITLE_VERSION, msg, Gtk.MessageType.ERROR)
+
 
 def msg_dialog(parent, title, msg, msgtype=Gtk.MessageType.WARNING, buttons=Gtk.ButtonsType.OK):
     dlg = Gtk.MessageDialog(parent, 0, msgtype, buttons, msg)
@@ -403,7 +438,7 @@ if __name__ == '__main__':
             ui.job_error(str(ex))
             return []
 
-    env = Environment(['photomv'], True, True)
+    env = Environment(['photomvg'])
     env.showSrcDir = True
     ui = GTKUI(env, worker)
 
