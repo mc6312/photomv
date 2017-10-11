@@ -168,6 +168,7 @@ def main(args):
 
         if env.error:
             # см. Environment.__init__()
+            # ругаемся только сейчас, когда уже известен UIClass
             raise Exception(env.error)
 
         ui = UIClass(env, process_files)

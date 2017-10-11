@@ -309,6 +309,8 @@ class GTKUI(UserInterface):
             del self.env.sourceDirs[ix]
             self.srcdirlist.remove(itrs)
 
+            self.btnstart.set_sensitive(len(self.env.sourceDirs) > 0)
+
     def cboxifexists_changed(self, cbox):
         self.env.ifFileExists = cbox.get_active()
 
