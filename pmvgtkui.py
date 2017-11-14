@@ -272,11 +272,16 @@ class GTKUI(UserInterface):
 
         self.btnstart = Gtk.Button('Начать')
         self.btnstart.connect('clicked', lambda b: self.exec_job())
+        self.btnstart.set_can_default(True)
+
         self.ctlhbox.pack_start(self.btnstart, False, False, 0)
 
-        btnexit = Gtk.Button('Выход')
-        btnexit.connect('clicked', self.destroy)
-        self.ctlhbox.pack_end(btnexit, False, False, 0)
+        self.window.set_default(self.btnstart)
+
+        self.btnexit = Gtk.Button('Выход')
+        self.btnexit.connect('clicked', self.destroy)
+        self.btnexit.set_can_default(True)
+        self.ctlhbox.pack_end(self.btnexit, False, False, 0)
         #
         self.pages.set_current_page(self.PAGE_START)
 
@@ -371,6 +376,7 @@ class GTKUI(UserInterface):
             self.progbar.set_fraction(0.0)
             self.progbar.set_text('')
             self.ctlhbox.set_sensitive(True)
+            self.window.set_default(self.btnexit)
             self.isWorking = False
             #self.destroy(btn)
 
