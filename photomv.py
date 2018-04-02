@@ -51,25 +51,38 @@ def process_files(env, ui, srcDirs=None):
     if not srcDirs:
         srcDirs = env.sourceDirs
 
-    # да, вот так, через жопу
-    sourcedirs = [] # с этим списком будет работать 2й проход
+    # с этим списком будет работать 2й проход
+    # содержит он кортежи вида ('каталог', [список файлов]), где
+    # список файлов содержит опять же кортежи вида (filename, filetype)
+    # где filetype - FileMetadata.FILE_TYPE_xxx
+    # да, оно память жрёть, но не гигабайты же
+    # а кто натравит photomv на гигантскую файлопомойку -
+    # сам себе злой буратино
+    sourcedirs = []
 
     for srcdir in srcDirs:
         if not os.path.exists(srcdir) or not os.path.isdir(srcdir):
             ui.job_error('путь "%s" не существует или указывает не на каталог' % srcdir)
         else:
-            nfiles = 0
             for srcroot, dirs, files in os.walk(srcdir):
                 ui.job_progress(-1.0) # progressbar.pulse()
+                flist = [] # список файлов допустимых типов из текущего каталога
+
                 for fname in files:
-                    nfiles += 1
+                    # файлы неизвестных типов отсеиваем заранее
+                    ftype = env.known_file_type(fname)
+                    if ftype is None:
+                        continue
 
-            if nfiles:
-                sourcedirs.append(srcdir)
-                statTotalFiles += nfiles
+                    flist.append((fname, ftype))
 
-    if not sourcedirs:
-        return ['не с чем работать%s' % (' - нет файлов' if not statTotalFiles else '')]
+                nfiles = len(flist)
+                if nfiles:
+                    sourcedirs.append((srcroot, flist))
+                    statTotalFiles += nfiles
+
+    if statTotalFiles == 0:
+        return ['не с чем работать - нет файлов']
 
     #
     # 2й проход - собственно обработка файлов
@@ -77,79 +90,79 @@ def process_files(env, ui, srcDirs=None):
     if statTotalFiles:
         nFileIx = 0
 
-        for srcdir in sourcedirs:
-            for srcroot, dirs, files in os.walk(srcdir):
-                ui.job_show_dir(srcroot)
+        for srcdir, flist in sourcedirs:
+            ui.job_show_dir(srcdir)
 
-                for fname in files:
-                    nFileIx += 1
+            for fname, ftype in flist:
+                nFileIx += 1
 
-                    srcPathName = os.path.join(srcroot, fname)
-                    if os.path.isfile(srcPathName):
-                        # всякие там символические ссылки пока нафиг
-                        try:
-                            metadata = FileMetadata(srcPathName)
-                        except Exception as ex:
+                srcPathName = os.path.join(srcdir, fname)
+                if os.path.isfile(srcPathName):
+                    # всякие там символические ссылки пока нафиг
+                    try:
+                        metadata = FileMetadata(srcPathName, ftype)
+                    except Exception as ex:
+                        statSkippedFiles += 1
+
+                        ui.job_error('файл "%s" повреждён или ошибка чтения (%s)' % (fname, str(ex)))
+                        # с кривыми файлами ничего не делаем
+                        continue
+
+                    #
+                    # выясняем, каким шаблоном создавать новое имя файла
+                    #
+
+                    fntemplate = env.get_template(metadata.fields[metadata.MODEL])
+
+                    newSubDir, newFileName, newFileExt = fntemplate.get_new_file_name(env, metadata)
+
+                    destPath = os.path.join(env.destinationDir, newSubDir)
+                    make_dirs(destPath, OSError)
+
+                    newFileNameExt = newFileName + newFileExt
+
+                    ui.job_progress(float(nFileIx) / statTotalFiles, '%s -> %s' % (fname, newFileNameExt))
+
+                    destPathName = os.path.join(destPath, newFileNameExt)
+
+                    if os.path.exists(destPathName):
+                        if env.ifFileExists == env.FEXIST_SKIP:
+                            ui.job_warning('файл "%s" уже существует, пропускаю' % newFileNameExt)
                             statSkippedFiles += 1
-
-                            ui.job_error('файл "%s" повреждён или ошибка чтения (%s)' % (fname, str(ex)))
-                            # с кривыми файлами ничего не делаем
                             continue
+                        elif env.ifFileExists == env.FEXIST_RENAME:
+                            # пытаемся подобрать незанятое имя
 
-                        #
-                        # выясняем, каким шаблоном создавать новое имя файла
-                        #
+                            canBeRenamed = False
 
-                        fntemplate = env.get_template(metadata.fields[metadata.MODEL])
+                            # нефиг больше 10 повторов... и 10-то много
+                            for unum in range(1, 11):
+                                destPathName = os.path.join(destPath, '%s-%d%s' % (newFileName, unum, newFileExt))
 
-                        newSubDir, newFileName, newFileExt = fntemplate.get_new_file_name(env, metadata)
+                                if not os.path.exists(destPathName):
+                                    canBeRenamed = True
+                                    break
 
-                        destPath = os.path.join(env.destinationDir, newSubDir)
-                        make_dirs(destPath, OSError)
+                            if not canBeRenamed:
+                                ui.job_error('в каталоге "%s" слишком много файлов с именем %s*%s' % (destPath, newFileName, newFileExt))
 
-                        newFileNameExt = newFileName + newFileExt
-
-                        ui.job_progress(float(nFileIx) / statTotalFiles, '%s -> %s' % (fname, newFileNameExt))
-
-                        destPathName = os.path.join(destPath, newFileNameExt)
-
-                        if os.path.exists(destPathName):
-                            if env.ifFileExists == env.FEXIST_SKIP:
-                                ui.job_warning('файл "%s" уже существует, пропускаю' % newFileNameExt)
                                 statSkippedFiles += 1
                                 continue
-                            elif env.ifFileExists == env.FEXIST_RENAME:
-                                # пытаемся подобрать незанятое имя
 
-                                canBeRenamed = False
+                        # else:
+                        # env.FEXIST_OVERWRITE - перезаписываем
 
-                                # нефиг больше 10 повторов... и 10-то много
-                                for unum in range(1, 11):
-                                    destPathName = os.path.join(destPath, '%s-%d%s' % (newFileName, unum, newFileExt))
+                    #
+                    # а вот теперь копируем или перемещаем файл
+                    #
 
-                                    if not os.path.exists(destPathName):
-                                        canBeRenamed = True
-                                        break
-
-                                if not canBeRenamed:
-                                    ui.job_error('в каталоге "%s" слишком много файлов с именем %s*%s' % (destPath, newFileName, newFileExt))
-
-                                    statSkippedFiles += 1
-                                    continue
-
-                            # else:
-                            # env.FEXIST_OVERWRITE - перезаписываем
-
-                        #
-                        # а вот теперь копируем или перемещаем файл
-                        #
-
-                        try:
-                            env.modeFileOp(srcPathName, destPathName)
-                            statProcessedFiles += 1
-                        except (IOError, os.error) as emsg:
-                            skippedFiles += 1
-                            ui.job_error(u'не удалось % файл - %s' % (env.modeMessages.errmsg, emsg))
+                    try:
+                        env.modeFileOp(srcPathName, destPathName)
+                        statProcessedFiles += 1
+                    except (IOError, os.error) as emsg:
+                        print_exception()
+                        skippedFiles += 1
+                        ui.job_error(u'не удалось % файл - %s' % (env.modeMessages.errmsg, repr(emsg)))
 
     return ('Всего файлов: %d\n%s: %d\nпропущено: %d' % (statTotalFiles,
         env.modeMessages.statmsg, statProcessedFiles,
@@ -175,7 +188,8 @@ def main(args):
         ui.run()
 
     except Exception as ex:
-        UIClass.show_fatal_error(str(ex))
+        print_exception()
+        UIClass.show_fatal_error(repr(ex))
 
         return 1
 

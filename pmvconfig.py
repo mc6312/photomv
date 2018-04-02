@@ -26,6 +26,8 @@ import shutil
 
 from pmvcommon import *
 from pmvtemplates import *
+from pmvmetadata import FileMetadata
+
 
 workmodemsgs = namedtuple('workmodemsgs', 'errmsg statmsg')
 
@@ -100,11 +102,22 @@ class Environment():
     SEC_OPTIONS = 'options'
     OPT_IF_EXISTS = 'if-exists'
     OPT_SHOW_SRC_DIR = 'show-src-dir'
+    OPT_KNOWN_IMAGE_TYPES = 'known-image-types'
+    OPT_KNOWN_VIDEO_TYPES = 'known-video-types'
 
     SEC_TEMPLATES = 'templates'
     DEFAULT_TEMPLATE_NAME = '*'
 
     SEC_ALIASES = 'aliases'
+
+    # список фотоформатов, спионеренный в RawTherapee
+    IMAGE_FILE_EXTENSIONS = {'.nef', '.cr2', '.cr3', '.tif', '.tiff', '.crf',
+        '.crw', '.3fr', '.arw', '.dcr', '.dng', '.fff', '.iiq', '.kdc',
+        '.mef', '.mos', '.mrw', '.nrw', '.orf', '.pef', '.raf', '.raw',
+        '.rw2', '.rwl', '.rwz', '.sr2', '.srf', '.srw', '.x3f', '.arq'}
+    # и видео, какое удалось вспомнить
+    VIDEO_FILE_EXTENSIONS = {'.mov', '.avi', '.mpg', '.vob', '.ts',
+        '.mp4', '.m4v', '.mkv'}
 
     E_BADVAL = 'Неправильное значение параметра "%s" в секции "%s" файла настроек "%s" - %s'
     E_BADVAL2 = 'Неправильное значение параметра "%s" в секции "%s" файла настроек "%s"'
@@ -150,6 +163,10 @@ class Environment():
 
         # каталог, в который копируются (или перемещаются) изображения
         self.destinationDir = None
+
+        # поддерживаемые типы файлов (по расширениям)
+        self.knownImageTypes = self.IMAGE_FILE_EXTENSIONS
+        self.knownVideoTypes = self.VIDEO_FILE_EXTENSIONS
 
         # что делать с файлами, которые уже есть в каталоге-приемнике
         self.ifFileExists = self.FEXIST_RENAME
@@ -243,7 +260,7 @@ class Environment():
             # self.GUImode уже установлены в известные значения
             # и сообщение об ошибке где-то снаружи должно быть показано
             # в правильном режиме
-            self.error = str(ex)
+            self.error = repr(ex)
 
     CMDOPT_GUI = {'-g', '--gui'}
     CMDOPT_NOGUI = {'-n', '--no-gui'}
@@ -407,6 +424,25 @@ class Environment():
         #
         self.showSrcDir = self.cfg.getboolean(self.SEC_OPTIONS, self.OPT_SHOW_SRC_DIR, fallback=False)
 
+        #
+        # known-*-types
+        #
+        def __get_ext_set_param(sec, opt):
+            ret = set()
+
+            kts = filter(None, self.cfg.getstr(sec, opt).lower().split(None))
+
+            for ktype in kts:
+                if not ktype.startswith('.'):
+                    ktype = '.%s' % ktype
+
+                ret.add(ktype)
+
+            return ret
+
+        self.knownImageTypes.update(__get_ext_set_param(self.SEC_OPTIONS, self.OPT_KNOWN_IMAGE_TYPES))
+        self.knownVideoTypes.update(__get_ext_set_param(self.SEC_OPTIONS, self.OPT_KNOWN_VIDEO_TYPES))
+
     def __read_config_aliases(self):
         """Разбор секции aliases файла настроек"""
 
@@ -438,7 +474,7 @@ class Environment():
             try:
                 self.templates[tplname] = FileNameTemplate(tstr)
             except Exception as ex:
-                raise self.Error(self.E_BADVAL % (tname, self.SEC_TEMPLATES, self.configPath, str(ex)))
+                raise self.Error(self.E_BADVAL % (tname, self.SEC_TEMPLATES, self.configPath, repr(ex)))
 
         # если в файле настроек не был указан общий шаблон с именем "*",
         # то добавляем в templates встроенный шаблон pmvtemplates.defaultFileNameTemplate
@@ -468,7 +504,7 @@ class Environment():
                     with open(cfgpath, 'w+', encoding=ENCODING) as f:
                         f.write(DEFAULT_CONFIG)
                 except OSError as ex:
-                    raise self.Error('Не удалось создать новый файл настроек "%s" - %s' % (cfgpath, str(ex)))
+                    raise self.Error('Не удалось создать новый файл настроек "%s" - %s' % (cfgpath, repr(ex)))
 
                 raise self.Error('Файл настроек не найден, создан новый файл "%s".\nДля продолжения работы файл настроек должен быть отредактирован.' % cfgpath)
 
@@ -511,7 +547,23 @@ class Environment():
 
         return self.templates[self.DEFAULT_TEMPLATE_NAME]
 
+    def known_file_type(self, filename):
+        """Определяет по расширению имени filename, известен ли программе
+        тип файла, а также подтип - изображение или видео.
+        Возвращает значение FileMetadata.FILE_TYPE_*, если тип известен,
+        иначе возвращает None."""
+
+        ext = os.path.splitext(filename)[1].lower()
+
+        if ext in self.knownImageTypes:
+            return FileMetadata.FILE_TYPE_IMAGE
+        elif ext in self.knownVideoTypes:
+            return FileMetadata.FILE_TYPE_VIDEO
+        else:
+            return None
+
     def __str__(self):
+        """Для отладки"""
         return '''cfg = %s
 modeMoveFiles = %s
 GUImode = %s
@@ -520,6 +572,8 @@ modeFileOp = %s
 sourceDirs = %s
 destinationDir = "%s"
 ifFileExists = %s
+knownImageTypes = "%s"
+knownVideoTypes = "%s"
 showSrcDir = %s
 aliases = %s
 templates = %s''' % (self.cfg,
@@ -528,6 +582,8 @@ templates = %s''' % (self.cfg,
     self.modeFileOp,
     str(self.sourceDirs), self.destinationDir,
     self.FEXISTS_OPTIONS_STR[self.ifFileExists],
+    str(self.knownImageTypes),
+    str(self.knownVideoTypes),
     self.showSrcDir,
     self.aliases,
     ', '.join(map(str, self.templates.values())))
@@ -537,7 +593,7 @@ if __name__ == '__main__':
     print('[%s test]' % __file__)
 
     try:
-        sys.argv[0] = 'photocpgi.py'
+        sys.argv[0] = 'photocpg.py'
         print(sys.argv)
         env = Environment(sys.argv)
         if env.error:
@@ -550,3 +606,5 @@ if __name__ == '__main__':
     print(env)
     #tpl = env.get_template('')
     #print('template:', tpl, repr(tpl))
+
+    print(env.known_file_type('filename.m4v'))

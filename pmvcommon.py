@@ -19,11 +19,20 @@
 
 
 TITLE = 'PhotoMV'
-VERSION = '1.1.2'
+VERSION = '1.1.3'
 TITLE_VERSION = '%s v%s\n' % (TITLE, VERSION)
 
 
 import os, os.path
+from traceback import format_exception
+from sys import exc_info
+
+
+def print_exception():
+    """Печать текущего исключения"""
+
+    for s in format_exception(*exc_info()):
+        print(s)
 
 
 def make_dirs(path, excpt=None):

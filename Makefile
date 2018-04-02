@@ -25,4 +25,4 @@ backup:
 update:
 	$(packer) x -y $(backupdir)$(srcarcname)
 commit:
-	./do_commit
+	git commit -a -uno -m "$(shell python3 -c 'from pmvcommon import VERSION; print(VERSION)')"

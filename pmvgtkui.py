@@ -370,7 +370,8 @@ class GTKUI(UserInterface):
                     self.job_message(None, msg)
 
             except Exception as ex:
-                self.job_error('Ошибка: %s' % str(ex))
+                print_exception()
+                self.job_error('Ошибка: %s' % repr(ex))
 
         finally:
             self.progbar.set_fraction(0.0)
@@ -443,6 +444,7 @@ if __name__ == '__main__':
 
         except Exception as ex:
             #ui.critical_error(str(ex))
+            print_exception()
             ui.job_error(str(ex))
             return []
 
@@ -453,4 +455,5 @@ if __name__ == '__main__':
     try:
         ui.run()
     except Exception as ex:
+        print_exception()
         ui.critical_error(str(ex))

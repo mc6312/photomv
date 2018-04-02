@@ -160,7 +160,9 @@ class FileNameTemplate():
         elif fldix == self.FILENAME:
             fv = metadata.fileName
         elif fldix == self.FILETYPE:
-            fv = self.__FILETYPE_STR[metadata.fields[FileMetadata.FILETYPE]]
+            nfx = metadata.fields[FileMetadata.FILETYPE]
+
+            fv = self.__FILETYPE_STR[nfx] if nfx in self.__FILETYPE_STR else None
 
         return '_' if not fv else fv
 
@@ -201,7 +203,7 @@ if __name__ == '__main__':
 
     import sys
     from pmvconfig import Environment
-    env = Environment(sys.argv, 'photomv.py')
+    env = Environment(sys.argv)
 
     testFile = '~/downloads/src/DSCN_0464.NEF'
     #testFile = '~/photos.current/2017/09/24/raw/p20170924_0690.nef'
