@@ -27,10 +27,16 @@ class FileNameTemplate():
 
     # поля шаблона
     YEAR, MONTH, DAY, HOUR, MINUTE, \
-    MODEL, ALIAS, PREFIX, NUMBER, FILETYPE, FILENAME = range(11)
+    MODEL, ALIAS, PREFIX, NUMBER, FILETYPE, LONGFILETYPE, \
+    FILENAME = range(12)
 
     __FILETYPE_STR = {FileMetadata.FILE_TYPE_IMAGE:'p',
+        FileMetadata.FILE_TYPE_RAW_IMAGE:'p', # для совместимости
         FileMetadata.FILE_TYPE_VIDEO:'v'}
+
+    __LONG_FILETYPE_STR = {FileMetadata.FILE_TYPE_IMAGE:'photo',
+        FileMetadata.FILE_TYPE_RAW_IMAGE:'raw',
+        FileMetadata.FILE_TYPE_VIDEO:'video'}
 
     # отображение полей экземпляра FileMetadata в поля FileNameTemplate
     # для полей FileNameTemplate.ALIAS, .FILETYPE и .FILENAME - будет спец. обработка
@@ -48,7 +54,8 @@ class FileNameTemplate():
         'a':ALIAS, 'alias':ALIAS,           # сокращенное название модели (если есть в Environment.aliases)
         'p':PREFIX, 'prefix':PREFIX,        # префикс из оригинального имени файла
         'n':NUMBER, 'number':NUMBER,        # номер снимка из оригинального имени файла или EXIF
-        't':FILETYPE, 'type':FILETYPE,      # тип файла
+        't':FILETYPE, 'type':FILETYPE,      # тип файла, односимвольный вариант
+        'l':LONGFILETYPE, 'longtype':LONGFILETYPE, # тип файла, длинный вариант
         'f':FILENAME, 'filename':FILENAME}  # оригинальное имя файла (без расширения)
 
     class Error(Exception):
@@ -161,8 +168,10 @@ class FileNameTemplate():
             fv = metadata.fileName
         elif fldix == self.FILETYPE:
             nfx = metadata.fields[FileMetadata.FILETYPE]
-
             fv = self.__FILETYPE_STR[nfx] if nfx in self.__FILETYPE_STR else None
+        elif fldix == self.LONGFILETYPE:
+            nfx = metadata.fields[FileMetadata.FILETYPE]
+            fv = self.__LONG_FILETYPE_STR[nfx] if nfx in self.__LONG_FILETYPE_STR else None
 
         return '_' if not fv else fv
 
@@ -205,17 +214,12 @@ if __name__ == '__main__':
     from pmvconfig import Environment
     env = Environment(sys.argv)
 
-    testFile = '~/downloads/src/DSCN_0464.NEF'
-    #testFile = '~/photos.current/2017/09/24/raw/p20170924_0690.nef'
-    #testFile = '/pub/archive/photos/2007/01/01/DSC_2183.NEF'
-    #testFile = '/pub/archive/photos/2004/05/22/05220027.jpg'
+    testFiles = (('~/downloads/src/p20170705_666.nef', FileMetadata.FILE_TYPE_RAW_IMAGE),
+        ('~/downloads/src/v20150523_20150523-2.mkv', FileMetadata.FILE_TYPE_VIDEO))
 
-    metadata = FileMetadata(os.path.expanduser(testFile))
+    for fname, ftype in testFiles:
+        metadata = FileMetadata(os.path.expanduser(fname), ftype)
 
-    template = FileNameTemplate('{year}/{month}/{day}/{type}{year}{month}{day}_{ hour}{M}_{n}_{alias}_{f}')
-    print(template.get_new_file_name(env, metadata))
-
-    template = FileNameTemplate('/subdir/{type}{year}{month}{day}_{ hour}{M}_{n}_{alias}_{f}')
-    d, n, e = template.get_new_file_name(env, metadata)
-    p = os.path.join('/home', d, n+e)
-    print(p)
+        template = FileNameTemplate('{year}/{month}/{day}/{longtype}/{type}{year}{month}{day}_{ hour}{M}_{n}_{alias}_{f}')
+        d, n, e = template.get_new_file_name(env, metadata)
+        print(os.path.join('/home', d, n+e))

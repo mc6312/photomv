@@ -36,7 +36,7 @@ class FileMetadata():
     __EXIF_DT_TAGS = ['Exif.Image.OriginalDateTime', 'Exif.Image.DateTime']
     __EXIF_MODEL = 'Exif.Image.Model'
 
-    FILE_TYPE_IMAGE, FILE_TYPE_VIDEO = range(2)
+    FILE_TYPE_IMAGE, FILE_TYPE_RAW_IMAGE, FILE_TYPE_VIDEO = range(3)
 
     __N_FIELDS = 9
 
@@ -97,7 +97,7 @@ class FileMetadata():
         #
 
         md = None
-        if self.fields[self.FILETYPE] == self.FILE_TYPE_IMAGE:
+        if self.fields[self.FILETYPE] != self.FILE_TYPE_VIDEO:
             # пытаемся выковыривать exif только из изображений
             # если видеофайлы и могут его содержать, один фиг exiv2
             # на обычных видеофайлах спотыкается
@@ -170,8 +170,8 @@ class FileMetadata():
 if __name__ == '__main__':
     print('[%s test]' % __file__)
 
-    testFile = ('~/downloads/src/p20170705_666.nef', FileMetadata.FILE_TYPE_IMAGE)
-    testFile = ('~/downloads/src/v20150523_20150523-2.mkv', FileMetadata.FILE_TYPE_VIDEO)
+    testFile = ('~/downloads/src/p20170705_666.nef', FileMetadata.FILE_TYPE_RAW_IMAGE)
+    #testFile = ('~/downloads/src/v20150523_20150523-2.mkv', FileMetadata.FILE_TYPE_VIDEO)
     #testFile = '~/photos.current/2017/09/24/raw/p20170924_0690.nef'
     #testFile = '/pub/archive/photos/2007/01/01/DSC_2183.NEF'
     #testFile = '/pub/archive/photos/2004/05/22/05220027.jpg'
