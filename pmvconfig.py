@@ -102,25 +102,29 @@ class Environment():
     SEC_OPTIONS = 'options'
     OPT_IF_EXISTS = 'if-exists'
     OPT_SHOW_SRC_DIR = 'show-src-dir'
-    OPT_KNOWN_IMAGE_TYPES = 'known-image-types'
-    OPT_KNOWN_RAW_IMAGE_TYPES = 'known-raw-image-types'
-    OPT_KNOWN_VIDEO_TYPES = 'known-video-types'
+
+    #FileMetadata.FILE_TYPE_IMAGE, FILE_TYPE_RAW_IMAGE, FILE_TYPE_VIDEO
+    OPT_KNOWN_FILE_TYPES = ('known-image-types',
+        'known-raw-image-types',
+        'known-video-types')
 
     SEC_TEMPLATES = 'templates'
     DEFAULT_TEMPLATE_NAME = '*'
 
     SEC_ALIASES = 'aliases'
 
-    # список форматов RAW, спионеренный в RawTherapee
-    RAW_IMAGE_FILE_EXTENSIONS = {'.nef', '.cr2', '.cr3', '.crf',
-        '.crw', '.3fr', '.arw', '.dcr', '.dng', '.fff', '.iiq', '.kdc',
-        '.mef', '.mos', '.mrw', '.nrw', '.orf', '.pef', '.raf', '.raw',
-        '.rw2', '.rwl', '.rwz', '.sr2', '.srf', '.srw', '.x3f', '.arq'}
-    # список обычных картиночных форматов
-    IMAGE_FILE_EXTENSIONS = {'.tif', '.tiff', '.jpg', '.jpeg', '.png'}
-    # и видео, какое удалось вспомнить
-    VIDEO_FILE_EXTENSIONS = {'.mov', '.avi', '.mpg', '.vob', '.ts',
-        '.mp4', '.m4v', '.mkv'}
+    #FileMetadata.FILE_TYPE_IMAGE, FILE_TYPE_RAW_IMAGE, FILE_TYPE_VIDEO
+    DEFAULT_FILE_EXTENSIONS = (
+        # список форматов RAW, спионеренный в RawTherapee
+        {'.nef', '.cr2', '.cr3', '.crf',
+            '.crw', '.3fr', '.arw', '.dcr', '.dng', '.fff', '.iiq', '.kdc',
+            '.mef', '.mos', '.mrw', '.nrw', '.orf', '.pef', '.raf', '.raw',
+            '.rw2', '.rwl', '.rwz', '.sr2', '.srf', '.srw', '.x3f', '.arq'},
+        # список обычных картиночных форматов
+        {'.tif', '.tiff', '.jpg', '.jpeg', '.png'},
+        # и видео, какое удалось вспомнить
+        {'.mov', '.avi', '.mpg', '.vob', '.ts',
+            '.mp4', '.m4v', '.mkv'})
 
     E_BADVAL = 'Неправильное значение параметра "%s" в секции "%s" файла настроек "%s" - %s'
     E_BADVAL2 = 'Неправильное значение параметра "%s" в секции "%s" файла настроек "%s"'
@@ -168,9 +172,7 @@ class Environment():
         self.destinationDir = None
 
         # поддерживаемые типы файлов (по расширениям)
-        self.knownImageTypes = self.IMAGE_FILE_EXTENSIONS
-        self.knownRawImageTypes = self.RAW_IMAGE_FILE_EXTENSIONS
-        self.knownVideoTypes = self.VIDEO_FILE_EXTENSIONS
+        self.knownFileTypes = self.DEFAULT_FILE_EXTENSIONS
 
         # что делать с файлами, которые уже есть в каталоге-приемнике
         self.ifFileExists = self.FEXIST_RENAME
@@ -431,22 +433,14 @@ class Environment():
         #
         # known-*-types
         #
-        def __get_ext_set_param(sec, opt):
-            ret = set()
-
-            kts = filter(None, self.cfg.getstr(sec, opt).lower().split(None))
+        for ixopt, optname in enumerate(self.OPT_KNOWN_FILE_TYPES):
+            kts = filter(None, self.cfg.getstr(self.SEC_OPTIONS, optname).lower().split(None))
 
             for ktype in kts:
                 if not ktype.startswith('.'):
                     ktype = '.%s' % ktype
 
-                ret.add(ktype)
-
-            return ret
-
-        self.knownImageTypes.update(__get_ext_set_param(self.SEC_OPTIONS, self.OPT_KNOWN_IMAGE_TYPES))
-        self.knownRawImageTypes.update(__get_ext_set_param(self.SEC_OPTIONS, self.OPT_KNOWN_RAW_IMAGE_TYPES))
-        self.knownVideoTypes.update(__get_ext_set_param(self.SEC_OPTIONS, self.OPT_KNOWN_VIDEO_TYPES))
+                self.knownFileTypes[ixopt].add(ktype)
 
     def __read_config_aliases(self):
         """Разбор секции aliases файла настроек"""
@@ -560,14 +554,11 @@ class Environment():
 
         ext = os.path.splitext(filename)[1].lower()
 
-        if ext in self.knownRawImageTypes:
-            return FileMetadata.FILE_TYPE_RAW_IMAGE
-        elif ext in self.knownImageTypes:
-            return FileMetadata.FILE_TYPE_IMAGE
-        elif ext in self.knownVideoTypes:
-            return FileMetadata.FILE_TYPE_VIDEO
-        else:
-            return None
+        for ixft, ftexts in enumerate(self.knownFileTypes):
+            if ext in ftexts:
+                return ixft
+
+        return None
 
     def __str__(self):
         """Для отладки"""
@@ -579,20 +570,18 @@ modeFileOp = %s
 sourceDirs = %s
 destinationDir = "%s"
 ifFileExists = %s
-knownImageTypes = "%s"
-knownRawImageTypes = "%s"
-knownVideoTypes = "%s"
+knownFileTypes:%s
 showSrcDir = %s
 aliases = %s
 templates = %s''' % (self.cfg,
-    self.modeMoveFiles, self.GUImode,
+    self.modeMoveFiles,
+    self.GUImode,
     self.modeMessages,
     self.modeFileOp,
-    str(self.sourceDirs), self.destinationDir,
+    str(self.sourceDirs),
+    self.destinationDir,
     self.FEXISTS_OPTIONS_STR[self.ifFileExists],
-    str(self.knownImageTypes),
-    str(self.knownRawImageTypes),
-    str(self.knownVideoTypes),
+    ''.join(map(lambda s: '\n  %d: %s' % (s[0], ', '.join(s[1])), enumerate(self.knownFileTypes))),
     self.showSrcDir,
     self.aliases,
     ', '.join(map(str, self.templates.values())))

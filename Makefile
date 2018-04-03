@@ -18,7 +18,8 @@ app:
 archive:
 	$(pack) $(srcarcname) *.py *. Makefile *.geany do_commit $(docs)
 distrib:
-	$(pack) $(arcname) $(docs)
+	make app
+	$(pack) $(basename)-$(shell python3 -c 'from pmvcommon import VERSION; print(VERSION)')$(arcx) $(basename) $(docs)
 backup:
 	make archive
 	mv $(srcarcname) $(backupdir)
