@@ -234,7 +234,7 @@ if __name__ == '__main__':
         for root, dirs, files in os.walk(os.path.expanduser('~/downloads/src')):
             for fname in files:
                 r = FileMetadata(os.path.join(root, fname), ftypes)
-                print(fname, '->', r.fields[r.PREFIX])
+                print(fname, '->', FileTypes.LONGSTR[ftypes.get_file_type_by_name(fname)])
 
     except Exception as ex:
         print('Can not get file metadata, %s' % str(ex))
