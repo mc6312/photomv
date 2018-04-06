@@ -26,7 +26,7 @@ import shutil
 
 from pmvcommon import *
 from pmvtemplates import *
-from pmvmetadata import FileMetadata
+from pmvmetadata import FileMetadata, FileTypes
 
 
 workmodemsgs = namedtuple('workmodemsgs', 'errmsg statmsg')
@@ -113,19 +113,6 @@ class Environment():
 
     SEC_ALIASES = 'aliases'
 
-    #FileMetadata.FILE_TYPE_IMAGE, FILE_TYPE_RAW_IMAGE, FILE_TYPE_VIDEO
-    DEFAULT_FILE_EXTENSIONS = (
-        # список форматов RAW, спионеренный в RawTherapee
-        {'.nef', '.cr2', '.cr3', '.crf',
-            '.crw', '.3fr', '.arw', '.dcr', '.dng', '.fff', '.iiq', '.kdc',
-            '.mef', '.mos', '.mrw', '.nrw', '.orf', '.pef', '.raf', '.raw',
-            '.rw2', '.rwl', '.rwz', '.sr2', '.srf', '.srw', '.x3f', '.arq'},
-        # список обычных картиночных форматов
-        {'.tif', '.tiff', '.jpg', '.jpeg', '.png'},
-        # и видео, какое удалось вспомнить
-        {'.mov', '.avi', '.mpg', '.vob', '.ts',
-            '.mp4', '.m4v', '.mkv'})
-
     E_BADVAL = 'Неправильное значение параметра "%s" в секции "%s" файла настроек "%s" - %s'
     E_BADVAL2 = 'Неправильное значение параметра "%s" в секции "%s" файла настроек "%s"'
     E_DUPVAL = 'Имя параметра "%s" использовано более одного раза в секции "%s" файла настроек "%s"'
@@ -172,7 +159,7 @@ class Environment():
         self.destinationDir = None
 
         # поддерживаемые типы файлов (по расширениям)
-        self.knownFileTypes = self.DEFAULT_FILE_EXTENSIONS
+        self.knownFileTypes = FileTypes()
 
         # что делать с файлами, которые уже есть в каталоге-приемнике
         self.ifFileExists = self.FEXIST_RENAME
@@ -436,11 +423,15 @@ class Environment():
         for ixopt, optname in enumerate(self.OPT_KNOWN_FILE_TYPES):
             kts = filter(None, self.cfg.getstr(self.SEC_OPTIONS, optname).lower().split(None))
 
+            exts = set()
+
             for ktype in kts:
                 if not ktype.startswith('.'):
                     ktype = '.%s' % ktype
 
-                self.knownFileTypes[ixopt].add(ktype)
+                exts.add(ktype)
+
+            self.knownFileTypes.add_extensions(ixopt, exts)
 
     def __read_config_aliases(self):
         """Разбор секции aliases файла настроек"""
@@ -546,20 +537,6 @@ class Environment():
 
         return self.templates[self.DEFAULT_TEMPLATE_NAME]
 
-    def known_file_type(self, filename):
-        """Определяет по расширению имени filename, известен ли программе
-        тип файла, а также подтип - изображение или видео.
-        Возвращает значение FileMetadata.FILE_TYPE_*, если тип известен,
-        иначе возвращает None."""
-
-        ext = os.path.splitext(filename)[1].lower()
-
-        for ixft, ftexts in enumerate(self.knownFileTypes):
-            if ext in ftexts:
-                return ixft
-
-        return None
-
     def __str__(self):
         """Для отладки"""
         return '''cfg = %s
@@ -581,7 +558,7 @@ templates = %s''' % (self.cfg,
     str(self.sourceDirs),
     self.destinationDir,
     self.FEXISTS_OPTIONS_STR[self.ifFileExists],
-    ''.join(map(lambda s: '\n  %d: %s' % (s[0], ', '.join(s[1])), enumerate(self.knownFileTypes))),
+    self.knownFileTypes,
     self.showSrcDir,
     self.aliases,
     ', '.join(map(str, self.templates.values())))
@@ -605,4 +582,4 @@ if __name__ == '__main__':
     #tpl = env.get_template('')
     #print('template:', tpl, repr(tpl))
 
-    print(env.known_file_type('filename.m4v'))
+    print(env.knownFileTypes.get_file_type_by_name('filename.m4v'))

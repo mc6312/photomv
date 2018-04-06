@@ -18,7 +18,7 @@
     along with PhotoMV.  If not, see <http://www.gnu.org/licenses/>."""
 
 
-from pmvmetadata import FileMetadata
+from pmvmetadata import FileMetadata, FileTypes
 import os.path
 
 
@@ -29,14 +29,6 @@ class FileNameTemplate():
     YEAR, MONTH, DAY, HOUR, MINUTE, \
     MODEL, ALIAS, PREFIX, NUMBER, FILETYPE, LONGFILETYPE, \
     FILENAME = range(12)
-
-    __FILETYPE_STR = {FileMetadata.FILE_TYPE_IMAGE:'p',
-        FileMetadata.FILE_TYPE_RAW_IMAGE:'p', # для совместимости
-        FileMetadata.FILE_TYPE_VIDEO:'v'}
-
-    __LONG_FILETYPE_STR = {FileMetadata.FILE_TYPE_IMAGE:'photo',
-        FileMetadata.FILE_TYPE_RAW_IMAGE:'raw',
-        FileMetadata.FILE_TYPE_VIDEO:'video'}
 
     # отображение полей экземпляра FileMetadata в поля FileNameTemplate
     # для полей FileNameTemplate.ALIAS, .FILETYPE и .FILENAME - будет спец. обработка
@@ -168,10 +160,10 @@ class FileNameTemplate():
             fv = metadata.fileName
         elif fldix == self.FILETYPE:
             nfx = metadata.fields[FileMetadata.FILETYPE]
-            fv = self.__FILETYPE_STR[nfx] if nfx in self.__FILETYPE_STR else None
+            fv = FileTypes.STR[nfx] if nfx in FileTypes.STR else None
         elif fldix == self.LONGFILETYPE:
             nfx = metadata.fields[FileMetadata.FILETYPE]
-            fv = self.__LONG_FILETYPE_STR[nfx] if nfx in self.__LONG_FILETYPE_STR else None
+            fv = FileTypes.LONGSTR[nfx] if nfx in FileTypes.LONGSTR else None
 
         return '_' if not fv else fv
 
@@ -210,16 +202,16 @@ defaultFileNameTemplate = FileNameTemplate('{filename}')
 if __name__ == '__main__':
     print('[%s test]' % __file__)
 
-    import sys
+    import sys, os
     from pmvconfig import Environment
     env = Environment(sys.argv)
 
-    testFiles = (('~/downloads/src/p20170705_666.nef', FileMetadata.FILE_TYPE_RAW_IMAGE),
-        ('~/downloads/src/v20150523_20150523-2.mkv', FileMetadata.FILE_TYPE_VIDEO))
+    template = FileNameTemplate('{year}/{month}/{day}/{longtype}/{type}{year}{month}{day}_{ hour}{M}_{n}')
 
-    for fname, ftype in testFiles:
-        metadata = FileMetadata(os.path.expanduser(fname), ftype)
+    for root, dirs, files in os.walk(os.path.expanduser('~/downloads/src')):
+        for fname in files:
+            fpath = os.path.join(root, fname)
+            metadata = FileMetadata(fpath, env.knownFileTypes)
 
-        template = FileNameTemplate('{year}/{month}/{day}/{longtype}/{type}{year}{month}{day}_{ hour}{M}_{n}')
-        d, n, e = template.get_new_file_name(env, metadata)
-        print(os.path.join('/home', d, n+e))
+            d, n, e = template.get_new_file_name(env, metadata)
+            print(fname, '->', os.path.join(d, n+e))

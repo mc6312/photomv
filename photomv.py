@@ -52,9 +52,8 @@ def process_files(env, ui, srcDirs=None):
         srcDirs = env.sourceDirs
 
     # с этим списком будет работать 2й проход
-    # содержит он кортежи вида ('каталог', [список файлов]), где
-    # список файлов содержит опять же кортежи вида (filename, filetype)
-    # где filetype - FileMetadata.FILE_TYPE_xxx
+    # содержит он кортежи вида ('каталог', [список файлов]),
+    # где список файлов - список строк с именами файлов;
     # да, оно память жрёть, но не гигабайты же
     # а кто натравит photomv на гигантскую файлопомойку -
     # сам себе злой буратино
@@ -70,11 +69,11 @@ def process_files(env, ui, srcDirs=None):
 
                 for fname in files:
                     # файлы неизвестных типов отсеиваем заранее
-                    ftype = env.known_file_type(fname)
+                    ftype = env.knownFileTypes.get_file_type_by_name(fname)
                     if ftype is None:
                         continue
 
-                    flist.append((fname, ftype))
+                    flist.append(fname)
 
                 nfiles = len(flist)
                 if nfiles:
@@ -93,14 +92,14 @@ def process_files(env, ui, srcDirs=None):
         for srcdir, flist in sourcedirs:
             ui.job_show_dir(srcdir)
 
-            for fname, ftype in flist:
+            for fname in flist:
                 nFileIx += 1
 
                 srcPathName = os.path.join(srcdir, fname)
                 if os.path.isfile(srcPathName):
                     # всякие там символические ссылки пока нафиг
                     try:
-                        metadata = FileMetadata(srcPathName, ftype)
+                        metadata = FileMetadata(srcPathName, env.knownFileTypes)
                     except Exception as ex:
                         statSkippedFiles += 1
 

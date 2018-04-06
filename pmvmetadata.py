@@ -28,6 +28,66 @@ from collections import namedtuple
 import re
 
 
+class FileTypes():
+    """Вспомогательный класс для определения типа файла по расширению."""
+
+    IMAGE, RAW_IMAGE, VIDEO = range(3)
+
+    STR = {IMAGE:'p', RAW_IMAGE:'p', VIDEO:'v'}
+    LONGSTR = {IMAGE:'photo', RAW_IMAGE:'raw', VIDEO:'video'}
+
+    DEFAULT_FILE_EXTENSIONS = {
+        # список форматов RAW, спионеренный в RawTherapee
+        RAW_IMAGE: {'.nef', '.cr2', '.cr3', '.crf',
+            '.crw', '.3fr', '.arw', '.dcr', '.dng', '.fff', '.iiq', '.kdc',
+            '.mef', '.mos', '.mrw', '.nrw', '.orf', '.pef', '.raf', '.raw',
+            '.rw2', '.rwl', '.rwz', '.sr2', '.srf', '.srw', '.x3f', '.arq'},
+        # список обычных картиночных форматов
+        IMAGE: {'.tif', '.tiff', '.jpg', '.jpeg', '.png'},
+        # и видео, какое удалось вспомнить
+        VIDEO: {'.mov', '.avi', '.mpg', '.vob', '.ts',
+            '.mp4', '.m4v', '.mkv'}
+        }
+
+    def __init__(self):
+        self.knownExtensions = self.DEFAULT_FILE_EXTENSIONS
+
+    def add_extensions(self, ftype, extensions):
+        """Добавление расширений в словарь известных расширений.
+
+        ftype       - тип файла, FileMetadata.FILE_TYPE_xxx,
+        extensions  - множество строк вида '.расширение'."""
+
+        self.knownExtensions[ftype].update(extensions)
+
+
+    def get_file_type(self, fileext):
+        """Определяет по расширению fileext, известен ли программе
+        тип файла, а также подтип - изображение или видео.
+        Возвращает значение FileType.IMAGE|RAW|VIDEO, если тип известен,
+        иначе возвращает None."""
+
+        for ft in self.knownExtensions:
+            if fileext in self.knownExtensions[ft]:
+                return ft
+
+        return None
+
+    def get_file_type_by_name(self, filename):
+        """Определяет тип файла по имени filename."""
+
+        return self.get_file_type(os.path.splitext(filename)[1].lower())
+
+    def __str__(self):
+        """Костыль для отладки"""
+
+        t = '\n'.join(map(lambda ft: '  %s: %s' % (self.LONGSTR[ft],
+                            ', '.join(self.knownExtensions[ft])),
+                        self.knownExtensions))
+        print(t)
+        return t
+
+
 class FileMetadata():
     """Метаданные изображения или видеофайла.
 
@@ -35,8 +95,6 @@ class FileMetadata():
 
     __EXIF_DT_TAGS = ['Exif.Image.OriginalDateTime', 'Exif.Image.DateTime']
     __EXIF_MODEL = 'Exif.Image.Model'
-
-    FILE_TYPE_IMAGE, FILE_TYPE_RAW_IMAGE, FILE_TYPE_VIDEO = range(3)
 
     __N_FIELDS = 9
 
@@ -48,12 +106,12 @@ class FileMetadata():
     # с именами изгаляются как могут
     __rxFNameParts = re.compile(r'^(.*?)[-_]?(\d+)?$', re.UNICODE)
 
-    def __init__(self, filename, ftype):
+    def __init__(self, filename, ftypes):
         """Извлечение метаданных из файла filename.
 
         Параметры:
         filename    - полный путь и имя файла с расширением
-        ftype       - FILE_TYPE_* (тип определяется раньше)
+        ftype       - экземпляр класса FileTypes
 
         Поля:
         fields      - поля с метаданными (см. константы xxx)
@@ -73,7 +131,7 @@ class FileMetadata():
         # в любом случае будет в нижнем регистре, ибо ваистену
         self.fileExt = self.fileExt.lower()
 
-        self.fields[self.FILETYPE] = ftype
+        self.fields[self.FILETYPE] = ftypes.get_file_type(self.fileExt)
 
         #
         # поля PREFIX, NUMBER
@@ -97,7 +155,7 @@ class FileMetadata():
         #
 
         md = None
-        if self.fields[self.FILETYPE] != self.FILE_TYPE_VIDEO:
+        if self.fields[self.FILETYPE] != FileTypes.VIDEO:
             # пытаемся выковыривать exif только из изображений
             # если видеофайлы и могут его содержать, один фиг exiv2
             # на обычных видеофайлах спотыкается
@@ -170,14 +228,13 @@ class FileMetadata():
 if __name__ == '__main__':
     print('[%s test]' % __file__)
 
-    testFiles = (('~/downloads/src/p20170705_666.nef', FileMetadata.FILE_TYPE_RAW_IMAGE)
-    #testFile = ('~/downloads/src/v20150523_20150523-2.mkv', FileMetadata.FILE_TYPE_VIDEO)
-    #testFile = '~/photos.current/2017/09/24/raw/p20170924_0690.nef'
-    #testFile = '/pub/archive/photos/2007/01/01/DSC_2183.NEF'
-    #testFile = '/pub/archive/photos/2004/05/22/05220027.jpg'
-
     try:
-        r = FileMetadata(os.path.expanduser(testFile[0]), testFile[1])
-        print(r)
+        ftypes = FileTypes()
+
+        for root, dirs, files in os.walk(os.path.expanduser('~/downloads/src')):
+            for fname in files:
+                r = FileMetadata(os.path.join(root, fname), ftypes)
+                print(fname, '->', r.fields[r.PREFIX])
+
     except Exception as ex:
         print('Can not get file metadata, %s' % str(ex))
