@@ -46,7 +46,7 @@ class FileMetadata():
     # выражение для выделения префикса и номера из имени файла
     # может не работать на файлах от некоторых камер - производители
     # с именами изгаляются как могут
-    __rxFNameParts = re.compile(r'^_*([^\d_]*)_*(\d+)?', re.UNICODE)
+    __rxFNameParts = re.compile(r'^(.*?)[-_]?(\d+)?$', re.UNICODE)
 
     def __init__(self, filename, ftype):
         """Извлечение метаданных из файла filename.
@@ -170,7 +170,7 @@ class FileMetadata():
 if __name__ == '__main__':
     print('[%s test]' % __file__)
 
-    testFile = ('~/downloads/src/p20170705_666.nef', FileMetadata.FILE_TYPE_RAW_IMAGE)
+    testFiles = (('~/downloads/src/p20170705_666.nef', FileMetadata.FILE_TYPE_RAW_IMAGE)
     #testFile = ('~/downloads/src/v20150523_20150523-2.mkv', FileMetadata.FILE_TYPE_VIDEO)
     #testFile = '~/photos.current/2017/09/24/raw/p20170924_0690.nef'
     #testFile = '/pub/archive/photos/2007/01/01/DSC_2183.NEF'
