@@ -220,6 +220,6 @@ if __name__ == '__main__':
     for fname, ftype in testFiles:
         metadata = FileMetadata(os.path.expanduser(fname), ftype)
 
-        template = FileNameTemplate('{year}/{month}/{day}/{longtype}/{type}{year}{month}{day}_{ hour}{M}_{n}_{alias}_{f}')
+        template = FileNameTemplate('{year}/{month}/{day}/{longtype}/{type}{year}{month}{day}_{ hour}{M}_{n}')
         d, n, e = template.get_new_file_name(env, metadata)
         print(os.path.join('/home', d, n+e))
