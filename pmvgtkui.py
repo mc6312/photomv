@@ -232,9 +232,12 @@ class GTKUI(UserInterface):
         ddbtn.connect('clicked', self.ddbtn_clicked)
         ddirhbox.pack_start(ddbtn, False, False, 0)
 
+        #
         # настройки
+        #
         opthbox = framehbox('Параметры', False)
 
+        # обработка существующих файлов
         opthbox.pack_start(Gtk.Label('Существующий файл'), False, False, 0)
 
         self.cboxifexists = Gtk.ComboBoxText()
@@ -246,6 +249,13 @@ class GTKUI(UserInterface):
         self.cboxifexists.connect('changed', self.cboxifexists_changed)
 
         opthbox.pack_start(self.cboxifexists, False, False, 0)
+
+        # поведение при завершении
+        chkexitok = Gtk.CheckButton('Закрыть программу после успешного выполнения')
+        opthbox.pack_end(chkexitok, False, False, 0)
+        chkexitok.set_active(env.closeIfSuccess)
+
+        chkexitok.connect('toggled', self.chkexitok_toggled)
 
         #
         # страница выполнения (PAGE_JOB)
@@ -304,6 +314,9 @@ class GTKUI(UserInterface):
                 self.env.sourceDirs.append(sdir)
                 self.srcdirlist.append((True, sdir))
 
+    def chkexitok_toggled(self, btn, data=None):
+        self.env.closeIfSuccess = btn.get_active()
+
     def get_selected_srcdir_iter(self):
         return self.srcdirlvsel.get_selected()[1]
 
@@ -357,6 +370,8 @@ class GTKUI(UserInterface):
         self.env.setup_work_mode()
         self.env.save()
 
+        nErrors = 0
+
         try:
             self.btnstart.set_sensitive(False)
             self.btnstart.set_visible(False)
@@ -372,6 +387,11 @@ class GTKUI(UserInterface):
             except Exception as ex:
                 print_exception()
                 self.job_error('Ошибка: %s' % repr(ex))
+
+                nErrors += 1
+
+            if not nErrors and self.env.closeIfSuccess:
+                self.destroy(None)
 
         finally:
             self.progbar.set_fraction(0.0)

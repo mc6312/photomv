@@ -19,7 +19,7 @@
 
 
 TITLE = 'PhotoMV'
-VERSION = '1.2.3'
+VERSION = '1.2.4'
 TITLE_VERSION = '%s v%s\n' % (TITLE, VERSION)
 
 

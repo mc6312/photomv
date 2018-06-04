@@ -102,6 +102,7 @@ class Environment():
     SEC_OPTIONS = 'options'
     OPT_IF_EXISTS = 'if-exists'
     OPT_SHOW_SRC_DIR = 'show-src-dir'
+    OPT_CLOSE_IF_SUCCESS = 'close-if-success'
 
     #FileMetadata.FILE_TYPE_IMAGE, FILE_TYPE_RAW_IMAGE, FILE_TYPE_VIDEO
     OPT_KNOWN_FILE_TYPES = ('known-image-types',
@@ -166,6 +167,9 @@ class Environment():
 
         # показывать ли каталоги-источники
         self.showSrcDir = False
+
+        # закрывать ли программу в случае успешного завершения (копирования)
+        self.closeIfSuccess = True
 
         # сокращенные псевдонимы камер
         # ключи словаря - названия камер, соответствующие соотв. полю EXIF
@@ -418,6 +422,11 @@ class Environment():
         self.showSrcDir = self.cfg.getboolean(self.SEC_OPTIONS, self.OPT_SHOW_SRC_DIR, fallback=False)
 
         #
+        # close-if-success
+        #
+        self.closeIfSuccess = self.cfg.getboolean(self.SEC_OPTIONS, self.OPT_CLOSE_IF_SUCCESS, fallback=True)
+
+        #
         # known-*-types
         #
         for ixopt, optname in enumerate(self.OPT_KNOWN_FILE_TYPES):
@@ -511,6 +520,7 @@ class Environment():
         # секция options
         self.cfg.set(self.SEC_OPTIONS, self.OPT_IF_EXISTS, self.FEXISTS_OPTIONS_STR[self.ifFileExists])
         self.cfg.set(self.SEC_OPTIONS, self.OPT_SHOW_SRC_DIR, str(self.showSrcDir))
+        self.cfg.set(self.SEC_OPTIONS, self.OPT_CLOSE_IF_SUCCESS, str(self.closeIfSuccess))
 
         # секции aliases и templates не трогаем, т.к. они из гуя не изменяются
 
