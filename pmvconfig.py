@@ -257,7 +257,7 @@ class Environment():
             # self.GUImode уже установлены в известные значения
             # и сообщение об ошибке где-то снаружи должно быть показано
             # в правильном режиме
-            self.error = repr(ex)
+            self.error = str(ex)
 
     CMDOPT_GUI = {'-g', '--gui'}
     CMDOPT_NOGUI = {'-n', '--no-gui'}

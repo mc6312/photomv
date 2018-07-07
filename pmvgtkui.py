@@ -65,10 +65,12 @@ def new_list_view(*coldefs):
     """Создаёт Gtk.TreeView.
 
     coldefs - один или несколько кортежей.
-    Кортежи должны содержать по два элемента:
+    Кортежи должны содержать по два или три элемента:
     1. тип данных GObject.TYPE_xxx
     2. булевское значение: должен ли столбец автоматически расширяться
        до макс. ширины.
+    3. булевское значение: если True, столбец отображается,
+       если False - только добавляется в Gtk.ListStore
 
     Возвращает кортеж из следующих элементов:
     экземпляры Gtk.ScrolledWindow, Gtk.ListStore, Gtk.TreeView,
@@ -82,29 +84,30 @@ def new_list_view(*coldefs):
     columns = []
     renderers = []
 
-    for colix, (cdtype, cexpand) in enumerate(coldefs):
-        if cdtype == GObject.TYPE_BOOLEAN:
-            crndr = Gtk.CellRendererToggle()
-            crndrpar = 'active'
-        elif cdtype == GObject.TYPE_STRING:
-            crndr = Gtk.CellRendererText(wrap_mode=Pango.WrapMode.WORD_CHAR)
-            crndrpar = 'text'
-        elif cdtype == Pixbuf:
-            crndr = Gtk.CellRendererPixbuf()
-            crndr.set_alignment(0.0, 0.0)
-            crndrpar = 'pixbuf'
-        else:
-            raise ValueError('new_list_view(): invalid type of column %d' % colix)
+    for colix, (cdtype, cexpand, cvisible) in enumerate(coldefs):
+        if cvisible:
+            if cdtype == GObject.TYPE_BOOLEAN:
+                crndr = Gtk.CellRendererToggle()
+                crndrpar = 'active'
+            elif cdtype == GObject.TYPE_STRING:
+                crndr = Gtk.CellRendererText(wrap_mode=Pango.WrapMode.WORD_CHAR)
+                crndrpar = 'text'
+            elif cdtype == Pixbuf:
+                crndr = Gtk.CellRendererPixbuf()
+                crndr.set_alignment(0.0, 0.0)
+                crndrpar = 'pixbuf'
+            else:
+                raise ValueError('new_list_view(): invalid type of column %d' % colix)
 
-        col = Gtk.TreeViewColumn('', crndr)
-        col.add_attribute(crndr, crndrpar, colix)
-        col.set_sizing(Gtk.TreeViewColumnSizing.GROW_ONLY)
-        col.set_resizable(False)
-        col.set_expand(cexpand)
-        lview.append_column(col)
+            col = Gtk.TreeViewColumn('', crndr)
+            col.add_attribute(crndr, crndrpar, colix)
+            col.set_sizing(Gtk.TreeViewColumnSizing.GROW_ONLY)
+            col.set_resizable(False)
+            col.set_expand(cexpand)
+            lview.append_column(col)
 
-        columns.append(col)
-        renderers.append(crndr)
+            columns.append(col)
+            renderers.append(crndr)
 
     sw = Gtk.ScrolledWindow()
     sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -122,6 +125,7 @@ class GTKUI(UserInterface):
     MAX_MESSAGES = 2000
 
     def destroy(self, widget, data=None):
+        self.env.save()
         Gtk.main_quit()
 
     def delete_event(self, widget, event):
@@ -202,10 +206,12 @@ class GTKUI(UserInterface):
 
         # список исходных каталогов
         sw, self.srcdirlist, self.srcdirlv,\
-        _cols, _crndrs = new_list_view((GObject.TYPE_BOOLEAN, False), (GObject.TYPE_STRING, True))
+            self.srcdirlvcols, _crndrs = new_list_view((GObject.TYPE_BOOLEAN, False, False), (GObject.TYPE_STRING, True, True))
         self.srcdirlvsel = self.srcdirlv.get_selection()
 
-        for sd in env.sourceDirs:
+        self.srcdirlv.connect('row-activated', self.sdlist_row_activated)
+
+        for sd in self.env.sourceDirs:
             self.srcdirlist.append((True, sd))
 
         sdlisthbox.pack_start(sw, True, True, 0)
@@ -213,7 +219,7 @@ class GTKUI(UserInterface):
         sdlistvbox = Gtk.VBox(spacing=WIDGET_SPACING)
         sdlisthbox.pack_end(sdlistvbox, False, False, 0)
 
-        for sicon, handler in (('edit-add', self.sdlist_add), ('edit-delete', self.sdlist_delete)):
+        for sicon, handler in (('list-add', self.sdlist_add), ('list-remove', self.sdlist_delete)):
             btn = Gtk.Button.new_from_icon_name(sicon, Gtk.IconSize.SMALL_TOOLBAR)
             btn.connect('clicked', handler)
             sdlistvbox.pack_start(btn, False, False, 0)
@@ -224,11 +230,11 @@ class GTKUI(UserInterface):
         self.destdirentry = Gtk.Entry()
         self.destdirentry.set_editable(False)
         #!!!
-        self.destdirentry.set_text(env.destinationDir)
+        self.destdirentry.set_text(self.env.destinationDir)
 
         ddirhbox.pack_start(self.destdirentry, True, True, 0)
 
-        ddbtn = Gtk.Button('…')
+        ddbtn = Gtk.Button.new_from_icon_name('folder-pictures', Gtk.IconSize.SMALL_TOOLBAR)
         ddbtn.connect('clicked', self.ddbtn_clicked)
         ddirhbox.pack_start(ddbtn, False, False, 0)
 
@@ -264,7 +270,7 @@ class GTKUI(UserInterface):
         self.pages.append_page(jobpagebox, None)
 
         sw, self.msglstore, self.msglview,\
-        _cls, _crs = new_list_view((Pixbuf, False), (GObject.TYPE_STRING, True))
+            _cls, _crs = new_list_view((Pixbuf, False, True), (GObject.TYPE_STRING, True, True))
         self.msglvsel = self.msglview.get_selection()
 
         jobpagebox.pack_start(sw, True, True, 0)
@@ -314,13 +320,16 @@ class GTKUI(UserInterface):
                 self.env.sourceDirs.append(sdir)
                 self.srcdirlist.append((True, sdir))
 
-    def chkexitok_toggled(self, btn, data=None):
-        self.env.closeIfSuccess = btn.get_active()
-
-    def get_selected_srcdir_iter(self):
-        return self.srcdirlvsel.get_selected()[1]
+        self.btnstart.set_sensitive(len(self.env.sourceDirs) > 0)
 
     def sdlist_delete(self, btn):
+        n = self.srcdirlist.iter_n_children(None)
+        if n < 2:
+            msg_dialog(self.window, 'Удаление каталога из списка',
+                'Единственный элемент списка не может быть удалён.',
+                Gtk.MessageType.WARNING)
+            return
+
         itrs = self.get_selected_srcdir_iter()
         if itrs:
             ix = self.srcdirlist.get_path(itrs).get_indices()[0]
@@ -329,13 +338,26 @@ class GTKUI(UserInterface):
 
             self.btnstart.set_sensitive(len(self.env.sourceDirs) > 0)
 
+    def sdlist_row_activated(self, tv, path, col):
+        itr = self.srcdirlist.get_iter(path)
+        #colix = self.srcdirlvcols.index(col)
+        # пока плюём на номер столбца
+        chk = self.srcdirlist.get(itr, self.SDLC_CHECK)[0]
+        self.srcdirlist.set_value(itr, self.SDLC_CHECK, not chk)
+
+    def chkexitok_toggled(self, btn, data=None):
+        self.env.closeIfSuccess = btn.get_active()
+
+    def get_selected_srcdir_iter(self):
+        return self.srcdirlvsel.get_selected()[1]
+
     def cboxifexists_changed(self, cbox):
         self.env.ifFileExists = cbox.get_active()
 
     def ddbtn_clicked(self, btn):
         SDDIR = 'Каталог назначения'
 
-        ddir = choose_directory(self.window, SDDIR, True, env.destinationDir)
+        ddir = choose_directory(self.window, SDDIR, True, self.env.destinationDir)
         if ddir:
             if self.env.same_src_dir(ddir):
                 msg_dialog(self.window, SDDIR,
@@ -469,6 +491,9 @@ if __name__ == '__main__':
             return []
 
     env = Environment(['photomvg'])
+    if env.error:
+        raise Exception(env.error)
+
     env.showSrcDir = True
     ui = GTKUI(env, worker)
 
