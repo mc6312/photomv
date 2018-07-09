@@ -78,6 +78,16 @@ class Environment():
     class Error(Exception):
         pass
 
+    # эхехех, сюда бы dataclass из Python 3.7...
+    class SourceDir:
+        def __init__(self, path, ignore=False):
+            self.path = path
+            self.ignore = ignore
+
+        def __repr__(self):
+            # для отладки
+            return '(path="%s", ignore=%s)' % (self.path, self.ignore)
+
     FEXIST_SKIP, FEXIST_RENAME, FEXIST_OVERWRITE = range(3)
 
     FEXIST_OPTIONS = {'skip':FEXIST_SKIP,
@@ -153,7 +163,8 @@ class Environment():
         self.modeMessages = None
         self.modeFileOp = None
 
-        # каталог, из которого копируются (или перемещаются) изображения
+        # каталоги, из которых копируются (или перемещаются) изображения
+        # список экземпляров Environment.SourceDir
         self.sourceDirs = []
 
         # каталог, в который копируются (или перемещаются) изображения
@@ -353,6 +364,12 @@ class Environment():
             if srcdir:
                 # пустые строки пропускаем - опухнешь на каждую мелочь ругаться
 
+                if srcdir.startswith('-'):
+                    srcdirignore = True
+                    srcdir = srcdir[1:]
+                else:
+                    srcdirignore = False
+
                 srcdir = validate_path(srcdir)
 
                 # путь добавляем во внутренний список, если он не совпадает
@@ -363,7 +380,7 @@ class Environment():
                     raise self.Error(self.E_BADVAL % (self.OPT_SRC_DIRS, self.SEC_PATHS, self.configPath,
                         'путь %d (%s) совпадает с одним из уже указанных' % (ixsd, srcdir)))
 
-                self.sourceDirs.append(srcdir)
+                self.sourceDirs.append(self.SourceDir(srcdir, srcdirignore))
 
         if not self.sourceDirs:
             raise self.Error(self.E_BADVAL % (self.OPT_SRC_DIRS, self.SEC_PATHS, self.configPath, 'не указано ни одного существующего исходного каталога'))
@@ -396,7 +413,7 @@ class Environment():
         каталогов списка self.sourceDirs."""
 
         for sd in self.sourceDirs:
-            if same_dir(sd, dirname):
+            if same_dir(sd.path, dirname):
                 return True
 
         return False
@@ -514,7 +531,7 @@ class Environment():
         В случае ошибки генерирует исключение."""
 
         # секция paths
-        self.cfg.set(self.SEC_PATHS, self.OPT_SRC_DIRS, ':'.join(self.sourceDirs))
+        self.cfg.set(self.SEC_PATHS, self.OPT_SRC_DIRS, ':'.join(map(lambda sd: '%s%s' % ('-' if sd.ignore else '', sd.path), self.sourceDirs)))
         self.cfg.set(self.SEC_PATHS, self.OPT_DEST_DIR, self.destinationDir)
 
         # секция options
@@ -591,5 +608,7 @@ if __name__ == '__main__':
     print(env)
     #tpl = env.get_template('')
     #print('template:', tpl, repr(tpl))
+
+    env.save()
 
     print(env.knownFileTypes.get_file_type_by_name('filename.m4v'))

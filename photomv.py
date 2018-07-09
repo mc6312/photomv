@@ -60,6 +60,11 @@ def process_files(env, ui, srcDirs=None):
     sourcedirs = []
 
     for srcdir in srcDirs:
+        if srcdir.ignore:
+            continue
+
+        srcdir = srcdir.path
+
         if not os.path.exists(srcdir) or not os.path.isdir(srcdir):
             ui.job_error('путь "%s" не существует или указывает не на каталог' % srcdir)
         else:

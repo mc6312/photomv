@@ -206,13 +206,13 @@ class GTKUI(UserInterface):
 
         # список исходных каталогов
         sw, self.srcdirlist, self.srcdirlv,\
-            self.srcdirlvcols, _crndrs = new_list_view((GObject.TYPE_BOOLEAN, False, False), (GObject.TYPE_STRING, True, True))
+            self.srcdirlvcols, _crndrs = new_list_view((GObject.TYPE_BOOLEAN, False, True), (GObject.TYPE_STRING, True, True))
         self.srcdirlvsel = self.srcdirlv.get_selection()
 
         self.srcdirlv.connect('row-activated', self.sdlist_row_activated)
 
         for sd in self.env.sourceDirs:
-            self.srcdirlist.append((True, sd))
+            self.srcdirlist.append((not sd.ignore, sd.path))
 
         sdlisthbox.pack_start(sw, True, True, 0)
 
@@ -317,7 +317,7 @@ class GTKUI(UserInterface):
                     'Выбранный каталог совпадает с каталогом назначения',
                     Gtk.MessageType.ERROR)
             else:
-                self.env.sourceDirs.append(sdir)
+                self.env.sourceDirs.append(self.env.SourceDir(sdir, True))
                 self.srcdirlist.append((True, sdir))
 
         self.btnstart.set_sensitive(len(self.env.sourceDirs) > 0)
@@ -344,6 +344,7 @@ class GTKUI(UserInterface):
         # пока плюём на номер столбца
         chk = self.srcdirlist.get(itr, self.SDLC_CHECK)[0]
         self.srcdirlist.set_value(itr, self.SDLC_CHECK, not chk)
+        self.env.sourceDirs[path.get_indices()[0]].ignore = chk
 
     def chkexitok_toggled(self, btn, data=None):
         self.env.closeIfSuccess = btn.get_active()
