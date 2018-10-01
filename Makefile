@@ -6,17 +6,18 @@ basename = photomv
 zipname = $(basename).zip
 arcname = $(basename)$(arcx)
 srcarcname = $(basename)-src$(arcx)
+srcs = __main__.py photomv.py pmvcommon.py pmvconfig.py pmvtemplates.py pmvmetadata.py pmvui.py pmvgtkui.py pmvtermui.py gtktools.py photomv.ui photomv.svg
 backupdir = ~/shareddocs/pgm/python/
 
 app:
-	$(pack) -tzip $(zipname) __main__.py photomv.py pmvcommon.py pmvconfig.py pmvtemplates.py pmvmetadata.py pmvui.py pmvgtkui.py pmvtermui.py
+	$(pack) -tzip $(zipname) $(srcs)
 	@echo '#!/usr/bin/env python3' >$(basename)
 	@cat $(zipname) >>$(basename)
 	rm $(zipname)
 	chmod 755 $(basename)
 
 archive:
-	$(pack) $(srcarcname) *.py *. Makefile *.geany do_commit $(docs)
+	$(pack) $(srcarcname) *.py *. Makefile *.geany *.ui *.svg do_commit $(docs)
 distrib:
 	make app
 	$(pack) $(basename)-$(shell python3 -c 'from pmvcommon import VERSION; print(VERSION)')$(arcx) $(basename) $(docs)

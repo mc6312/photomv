@@ -21,13 +21,10 @@ from pmvcommon import *
 from pmvconfig import *
 from pmvui import *
 
-from gi import require_version as gi_require_version
-gi_require_version('Gtk', '3.0') # извращенцы
+from gtktools import *
+
 from gi.repository import Gtk, Gdk, GObject, Pango, GLib
 from gi.repository.GdkPixbuf import Pixbuf
-
-
-WIDGET_SPACING = 4
 
 
 def choose_directory(parent, title, create, dirpath=None):
@@ -61,62 +58,6 @@ def choose_directory(parent, title, create, dirpath=None):
     return ret
 
 
-def new_list_view(*coldefs):
-    """Создаёт Gtk.TreeView.
-
-    coldefs - один или несколько кортежей.
-    Кортежи должны содержать по два или три элемента:
-    1. тип данных GObject.TYPE_xxx
-    2. булевское значение: должен ли столбец автоматически расширяться
-       до макс. ширины.
-    3. булевское значение: если True, столбец отображается,
-       если False - только добавляется в Gtk.ListStore
-
-    Возвращает кортеж из следующих элементов:
-    экземпляры Gtk.ScrolledWindow, Gtk.ListStore, Gtk.TreeView,
-    список экземпляров Gtk.TreeViewColumn, список экземпляров Gtk.CellRenderer."""
-
-    lstore = Gtk.ListStore(*map(lambda cd: cd[0], coldefs))
-
-    lview = Gtk.TreeView(lstore)
-    lview.set_headers_visible(False)
-
-    columns = []
-    renderers = []
-
-    for colix, (cdtype, cexpand, cvisible) in enumerate(coldefs):
-        if cvisible:
-            if cdtype == GObject.TYPE_BOOLEAN:
-                crndr = Gtk.CellRendererToggle()
-                crndrpar = 'active'
-            elif cdtype == GObject.TYPE_STRING:
-                crndr = Gtk.CellRendererText(wrap_mode=Pango.WrapMode.WORD_CHAR)
-                crndrpar = 'text'
-            elif cdtype == Pixbuf:
-                crndr = Gtk.CellRendererPixbuf()
-                crndr.set_alignment(0.0, 0.0)
-                crndrpar = 'pixbuf'
-            else:
-                raise ValueError('new_list_view(): invalid type of column %d' % colix)
-
-            col = Gtk.TreeViewColumn('', crndr)
-            col.add_attribute(crndr, crndrpar, colix)
-            col.set_sizing(Gtk.TreeViewColumnSizing.GROW_ONLY)
-            col.set_resizable(False)
-            col.set_expand(cexpand)
-            lview.append_column(col)
-
-            columns.append(col)
-            renderers.append(crndr)
-
-    sw = Gtk.ScrolledWindow()
-    sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-    sw.set_shadow_type(Gtk.ShadowType.IN)
-    sw.add(lview)
-
-    return (sw, lstore, lview, columns, renderers)
-
-
 class GTKUI(UserInterface):
     PAGE_START, PAGE_JOB = range(2)
 
@@ -137,14 +78,17 @@ class GTKUI(UserInterface):
 
         self.isWorking = False
 
+        resldr = get_resource_loader()
+        uibldr = get_gtk_builder(resldr, 'photomv.ui')
         #
         #
         #
-        self.window = Gtk.ApplicationWindow(Gtk.WindowType.TOPLEVEL)
-        self.window.connect('destroy', self.destroy)
-        self.window.connect('delete-event', self.delete_event)
+        self.window = uibldr.get_object('wndMain')
 
-        self.window.set_icon(self.window.render_icon(Gtk.STOCK_EXECUTE, Gtk.IconSize.DIALOG))
+        _b, icx, icy = Gtk.IconSize.lookup(Gtk.IconSize.DIALOG)
+        wicon = resldr.load_pixbuf('photomv.svg', icx, icy, Gtk.STOCK_EXECUTE)
+
+        self.window.set_icon(wicon)
 
         self.iconDirectory = self.window.render_icon(Gtk.STOCK_DIRECTORY, Gtk.IconSize.MENU)
         self.iconError = self.window.render_icon(Gtk.STOCK_DIALOG_ERROR, Gtk.IconSize.MENU)
@@ -157,44 +101,18 @@ class GTKUI(UserInterface):
         self.window.set_size_request(icx * 42, icx * 22) # шоб не совсем уж от балды
         self.window.set_border_width(WIDGET_SPACING)
 
-        rootvbox = Gtk.VBox(spacing=WIDGET_SPACING)
-        self.window.add(rootvbox)
-
-        self.pages = Gtk.Notebook(show_tabs=False, show_border=False)
-        rootvbox.pack_start(self.pages, True, True, 0)
+        self.pages = uibldr.get_object('pages')
 
         #
         # начальная страница (PAGE_START)
         #
-        startpagebox = Gtk.VBox(spacing=WIDGET_SPACING)
-        self.pages.append_page(startpagebox, None)
-
-        def framehbox(label, expand):
-            fr = Gtk.Frame.new(label)
-            startpagebox.pack_start(fr, expand, expand, 0)
-
-            hbox = Gtk.HBox(spacing=WIDGET_SPACING)
-            hbox.set_border_width(WIDGET_SPACING)
-            fr.add(hbox)
-
-            return hbox
 
         #
         # режим
         #
 
-        modebox = Gtk.HBox(spacing=WIDGET_SPACING)
-        startpagebox.pack_start(modebox, False, False, 0)
-
-        modebox.pack_start(Gtk.Label('Режим:'), False, False, 0)
-
-        moderbtncopy = Gtk.RadioButton.new_with_label(None, 'копирование')
-        moderbtncopy.connect('toggled', self.moderbtn_toggled, False)
-        modebox.pack_start(moderbtncopy, False, False, 0)
-
-        moderbtnmove = Gtk.RadioButton.new_with_label_from_widget(moderbtncopy, 'перемещение')
-        moderbtnmove.connect('toggled', self.moderbtn_toggled, True)
-        modebox.pack_start(moderbtnmove, False, False, 0)
+        moderbtncopy = uibldr.get_object('moderbtncopy')
+        moderbtnmove = uibldr.get_object('moderbtnmove')
 
         rbtn = moderbtnmove if self.env.modeMoveFiles else moderbtncopy
         rbtn.set_active(self.env.modeMoveFiles)
@@ -202,106 +120,66 @@ class GTKUI(UserInterface):
         #
         # env.sourceDirs
         #
-        sdlisthbox = framehbox('Исходные каталоги', True)
 
         # список исходных каталогов
-        sw, self.srcdirlist, self.srcdirlv,\
-            self.srcdirlvcols, _crndrs = new_list_view((GObject.TYPE_BOOLEAN, False, True), (GObject.TYPE_STRING, True, True))
+        self.srcdirlist = uibldr.get_object('srcdirlist')
+        self.srcdirlv = uibldr.get_object('srcdirlv')
         self.srcdirlvsel = self.srcdirlv.get_selection()
-
-        self.srcdirlv.connect('row-activated', self.sdlist_row_activated)
 
         for sd in self.env.sourceDirs:
             self.srcdirlist.append((not sd.ignore, sd.path))
 
-        sdlisthbox.pack_start(sw, True, True, 0)
-
-        sdlistvbox = Gtk.VBox(spacing=WIDGET_SPACING)
-        sdlisthbox.pack_end(sdlistvbox, False, False, 0)
-
-        for sicon, handler in (('list-add', self.sdlist_add), ('list-remove', self.sdlist_delete)):
-            btn = Gtk.Button.new_from_icon_name(sicon, Gtk.IconSize.SMALL_TOOLBAR)
-            btn.connect('clicked', handler)
-            sdlistvbox.pack_start(btn, False, False, 0)
-
         # env.destinationDir
-        ddirhbox = framehbox('Каталог назначения', False)
 
-        self.destdirentry = Gtk.Entry()
-        self.destdirentry.set_editable(False)
-        #!!!
-        self.destdirentry.set_text(self.env.destinationDir)
-
-        ddirhbox.pack_start(self.destdirentry, True, True, 0)
-
-        ddbtn = Gtk.Button.new_from_icon_name('folder-pictures', Gtk.IconSize.SMALL_TOOLBAR)
-        ddbtn.connect('clicked', self.ddbtn_clicked)
-        ddirhbox.pack_start(ddbtn, False, False, 0)
+        self.destdirbutton = uibldr.get_object('destdirbutton')
+        self.destdirbutton.select_filename(self.env.destinationDir)
 
         #
         # настройки
         #
-        opthbox = framehbox('Параметры', False)
 
         # обработка существующих файлов
-        opthbox.pack_start(Gtk.Label('Существующий файл'), False, False, 0)
 
-        self.cboxifexists = Gtk.ComboBoxText()
+        self.cboxifexists = uibldr.get_object('cboxifexists')
 
         for sieopt in env.FEXISTS_DISPLAY:
             self.cboxifexists.append_text(sieopt)
 
         self.cboxifexists.set_active(env.ifFileExists)
-        self.cboxifexists.connect('changed', self.cboxifexists_changed)
-
-        opthbox.pack_start(self.cboxifexists, False, False, 0)
 
         # поведение при завершении
-        chkexitok = Gtk.CheckButton('Закрыть программу после успешного выполнения')
-        opthbox.pack_end(chkexitok, False, False, 0)
+        chkexitok = uibldr.get_object('chkexitok')
         chkexitok.set_active(env.closeIfSuccess)
-
-        chkexitok.connect('toggled', self.chkexitok_toggled)
 
         #
         # страница выполнения (PAGE_JOB)
         #
-        jobpagebox = Gtk.VBox(spacing=WIDGET_SPACING)
-        self.pages.append_page(jobpagebox, None)
 
-        sw, self.msglstore, self.msglview,\
-            _cls, _crs = new_list_view((Pixbuf, False, True), (GObject.TYPE_STRING, True, True))
+        self.msglstore = uibldr.get_object('msglstore')
+        self.msglview = uibldr.get_object('msglview')
         self.msglvsel = self.msglview.get_selection()
 
-        jobpagebox.pack_start(sw, True, True, 0)
-
-        self.progbar = Gtk.ProgressBar()
-        self.progbar.set_show_text(True)
-        jobpagebox.pack_end(self.progbar, False, False, 0)
+        self.progbar = uibldr.get_object('progbar')
 
         #
         # управление
         #
 
-        self.ctlhbox = Gtk.HBox(spacing=WIDGET_SPACING)
-        rootvbox.pack_end(self.ctlhbox, False, False, 0)
+        self.ctlhbox = uibldr.get_object('ctlhbox')
 
-        self.btnstart = Gtk.Button('Начать')
-        self.btnstart.connect('clicked', lambda b: self.exec_job())
-        self.btnstart.set_can_default(True)
+        self.btnstart = uibldr.get_object('btnstart')
 
-        self.ctlhbox.pack_start(self.btnstart, False, False, 0)
+        self.window.set_default(self.btnstart) #? glade сюда не умеет ?
 
-        self.window.set_default(self.btnstart)
-
-        self.btnexit = Gtk.Button('Выход')
-        self.btnexit.connect('clicked', self.destroy)
-        self.btnexit.set_can_default(True)
-        self.ctlhbox.pack_end(self.btnexit, False, False, 0)
+        self.btnexit = uibldr.get_object('btnexit')
         #
         self.pages.set_current_page(self.PAGE_START)
 
+        uibldr.connect_signals(self)
         self.window.show_all()
+
+    def btnstart_clicked_cb(self, btn):
+        self.exec_job()
 
     def sdlist_add(self, btn):
         SSDIR = 'Исходный каталог'
@@ -355,22 +233,25 @@ class GTKUI(UserInterface):
     def cboxifexists_changed(self, cbox):
         self.env.ifFileExists = cbox.get_active()
 
-    def ddbtn_clicked(self, btn):
-        SDDIR = 'Каталог назначения'
+    def destdirbutton_file_set_cb(self, btn):
+        ddir = self.destdirbutton.get_filename() # get_current_folder?
 
-        ddir = choose_directory(self.window, SDDIR, True, self.env.destinationDir)
         if ddir:
             if self.env.same_src_dir(ddir):
-                msg_dialog(self.window, SDDIR,
+                msg_dialog(self.window, self.destdirbutton.get_title(),
                     'Выбранный каталог совпадает с одним из исходных каталогов',
                     Gtk.MessageType.ERROR)
+
+                # возвращаем взад старое значение, а то FileChooserButton про неправильные каталоги ничего же не знает
+                self.destdirbutton.select_filename(self.env.destinationDir)
             else:
                 self.env.destinationDir = ddir
-                self.destdirentry.set_text(ddir)
 
-    def moderbtn_toggled(self, rbtn, modeMove):
-        if rbtn.get_active():
-            self.env.modeMoveFiles = modeMove
+    def moderbtncopy_toggled_cb(self, rbtn):
+        self.env.modeMoveFiles = not rbtn.get_active()
+
+    def moderbtnmove_toggled_cb(self, rbtn):
+        self.env.modeMoveFiles = rbtn.get_active()
 
     def job_message(self, icon, txt):
         self.msglstore.append((icon, txt))
@@ -422,15 +303,9 @@ class GTKUI(UserInterface):
             self.ctlhbox.set_sensitive(True)
             self.window.set_default(self.btnexit)
             self.isWorking = False
-            #self.destroy(btn)
 
     def run(self):
         Gtk.main()
-
-    def task_events(self):
-        # даем прочихаться междумордию
-        while Gtk.events_pending():
-            Gtk.main_iteration()
 
     def job_show_dir(self, dirname=''):
         if self.env.showSrcDir and dirname:
@@ -442,7 +317,8 @@ class GTKUI(UserInterface):
             self.progbar.pulse()
         else:
             self.progbar.set_fraction(progress)
-        self.task_events()
+
+        flush_gtk_events()
 
     def job_error(self, msg):
         self.job_message(self.iconError, msg)
