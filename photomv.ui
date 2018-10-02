@@ -2,6 +2,11 @@
 <!-- Generated with glade 3.22.1 -->
 <interface>
   <requires lib="gtk+" version="3.20"/>
+  <object class="GtkImage" id="imgdestdirbutton">
+    <property name="visible">True</property>
+    <property name="can_focus">False</property>
+    <property name="stock">gtk-directory</property>
+  </object>
   <object class="GtkListStore" id="msglstore">
     <columns>
       <!-- column-name icon -->
@@ -233,12 +238,37 @@
                         <property name="can_focus">False</property>
                         <property name="border_width">4</property>
                         <child>
-                          <object class="GtkFileChooserButton" id="destdirbutton">
+                          <object class="GtkBox">
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
-                            <property name="action">select-folder</property>
-                            <property name="title" translatable="yes">Каталог назначения</property>
-                            <signal name="file-set" handler="destdirbutton_file_set_cb" swapped="no"/>
+                            <property name="spacing">4</property>
+                            <child>
+                              <object class="GtkEntry" id="destdirentry">
+                                <property name="visible">True</property>
+                                <property name="can_focus">True</property>
+                                <property name="editable">False</property>
+                              </object>
+                              <packing>
+                                <property name="expand">True</property>
+                                <property name="fill">True</property>
+                                <property name="position">0</property>
+                              </packing>
+                            </child>
+                            <child>
+                              <object class="GtkButton" id="destdirbutton">
+                                <property name="visible">True</property>
+                                <property name="can_focus">True</property>
+                                <property name="receives_default">True</property>
+                                <property name="image">imgdestdirbutton</property>
+                                <signal name="clicked" handler="destdirbutton_clicked_cb" swapped="no"/>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                                <property name="pack_type">end</property>
+                                <property name="position">1</property>
+                              </packing>
+                            </child>
                           </object>
                         </child>
                       </object>
@@ -471,6 +501,43 @@
             <property name="fill">True</property>
             <property name="position">4</property>
           </packing>
+        </child>
+      </object>
+    </child>
+  </object>
+  <object class="GtkFileChooserDialog" id="dlgDestDir">
+    <property name="can_focus">False</property>
+    <property name="title" translatable="yes">Выбор каталога назначения</property>
+    <property name="type_hint">dialog</property>
+    <property name="transient_for">wndMain</property>
+    <property name="action">select-folder</property>
+    <child>
+      <placeholder/>
+    </child>
+    <child internal-child="vbox">
+      <object class="GtkBox">
+        <property name="can_focus">False</property>
+        <property name="orientation">vertical</property>
+        <property name="spacing">2</property>
+        <child internal-child="action_area">
+          <object class="GtkButtonBox">
+            <property name="can_focus">False</property>
+            <property name="layout_style">end</property>
+            <child>
+              <placeholder/>
+            </child>
+            <child>
+              <placeholder/>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">False</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <placeholder/>
         </child>
       </object>
     </child>

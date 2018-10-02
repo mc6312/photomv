@@ -131,8 +131,19 @@ class GTKUI(UserInterface):
 
         # env.destinationDir
 
-        self.destdirbutton = uibldr.get_object('destdirbutton')
-        self.destdirbutton.select_filename(self.env.destinationDir)
+        self.dlgDestDir = uibldr.get_object('dlgDestDir')
+        # потому что Glade, похоже, не умеет к диалогам стандартные
+        # кнопки цеплять, зарраза
+        self.dlgDestDir.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            Gtk.STOCK_OK, Gtk.ResponseType.OK)
+        self.dlgDestDir.set_default_response(Gtk.ResponseType.CANCEL)
+
+        # только отображает! нужно из-за того, что FileChooserDialog
+        # не желает показывать недоступные или несуществующие каталоги,
+        # а проверка их наличия проводится только при старте
+        # копирования или перемещения
+        self.destdirentry = uibldr.get_object('destdirentry')
+        self.destdirentry.set_text(self.env.destinationDir)
 
         #
         # настройки
@@ -177,6 +188,18 @@ class GTKUI(UserInterface):
 
         uibldr.connect_signals(self)
         self.window.show_all()
+
+    def destdirbutton_clicked_cb(self, btn):
+        self.dlgDestDir.set_current_folder(self.env.destinationDir)
+        self.dlgDestDir.show()
+        r = self.dlgDestDir.run()
+        self.dlgDestDir.hide()
+
+        if r == Gtk.ResponseType.OK:
+            ddir = self.dlgDestDir.get_current_folder()
+
+            self.env.destinationDir = ddir
+            self.destdirentry.set_text(ddir)
 
     def btnstart_clicked_cb(self, btn):
         self.exec_job()
@@ -234,20 +257,6 @@ class GTKUI(UserInterface):
 
     def cboxifexists_changed(self, cbox):
         self.env.ifFileExists = cbox.get_active()
-
-    def destdirbutton_file_set_cb(self, btn):
-        ddir = self.destdirbutton.get_filename() # get_current_folder?
-
-        if ddir:
-            if self.env.same_src_dir(ddir):
-                msg_dialog(self.window, self.destdirbutton.get_title(),
-                    'Выбранный каталог совпадает с одним из исходных каталогов',
-                    Gtk.MessageType.ERROR)
-
-                # возвращаем взад старое значение, а то FileChooserButton про неправильные каталоги ничего же не знает
-                self.destdirbutton.select_filename(self.env.destinationDir)
-            else:
-                self.env.destinationDir = ddir
 
     def moderbtncopy_toggled_cb(self, rbtn):
         self.env.modeMoveFiles = not rbtn.get_active()

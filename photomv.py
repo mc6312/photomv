@@ -89,6 +89,27 @@ def process_files(env, ui, srcDirs=None):
         return ['не с чем работать - нет файлов']
 
     #
+    # проход 1.5 - проверка каталога назначения
+    # можно было проверить до прохода 1, но с другой стороны -
+    # какая нам разница, есть ли каталог назначения, если кидать туда
+    # нечего?
+    # а вот ща уже есть разница...
+    #
+
+    if not env.destinationDir:
+        raise EnvironmentError('Каталог назначения не указан')
+
+    if env.check_dest_is_same_with_src_dir():
+        raise EnvironmentError('Каталог назначения совпадает с одним из исходных каталогов')
+
+    # если каталога назначения нет - пытаемся создать.
+    # если не удаётся - тогда уже лаемся
+
+    if not os.path.exists(env.destinationDir):
+        make_dirs(destPath, OSError)
+
+
+    #
     # 2й проход - собственно обработка файлов
     #
     if statTotalFiles:
@@ -197,7 +218,10 @@ def main(args):
         print_exception()
         # а в интерфейс, когда он уже есть
         if UIClass is not None:
-            UIClass.show_fatal_error(repr(ex))
+            es = str(ex).strip()
+            if not es:
+                es = repr(ex)
+            UIClass.show_fatal_error(es)
 
         return 1
 

@@ -391,22 +391,35 @@ class Environment():
 
         self.destinationDir = self.cfg.getstr(self.SEC_PATHS, self.OPT_DEST_DIR)
 
-        if not self.destinationDir:
-            raise self.Error(self.E_NOVAL % (self.OPT_DEST_DIR, self.SEC_PATHS, self.configPath))
+        # здесь теперь наличие каталога проверять не будем - оно будет проверяться при запуске
+        # файловых операций
+
+        #if not self.destinationDir:
+        #    raise self.Error(self.E_NOVAL % (self.OPT_DEST_DIR, self.SEC_PATHS, self.configPath))
 
         self.destinationDir = validate_path(self.destinationDir)
 
-        if not os.path.exists(self.destinationDir):
-            raise self.Error(self.E_BADVAL % (self.OPT_DEST_DIR, self.SEC_PATHS, self.configPath,
-                'путь "%s" не существует' % self.destinationDir))
+        #if not os.path.exists(self.destinationDir):
+        #    raise self.Error(self.E_BADVAL % (self.OPT_DEST_DIR, self.SEC_PATHS, self.configPath,
+        #        'путь "%s" не существует' % self.destinationDir))
 
-        if not os.path.isdir(self.destinationDir):
-            raise self.Error(self.E_BADVAL % (self.OPT_DEST_DIR, self.SEC_PATHS, self.configPath,
-                'путь "%s" указывает не на каталог' % self.destinationDir))
+        if os.path.exists(self.destinationDir):
+            # если он есть - можно кой-каких проверок таки провернуть
+            if not os.path.isdir(self.destinationDir):
+                raise self.Error(self.E_BADVAL % (self.OPT_DEST_DIR, self.SEC_PATHS, self.configPath,
+                    'путь "%s" указывает не на каталог' % self.destinationDir))
 
-        if self.same_src_dir(self.destinationDir):
-            raise self.Error(self.E_BADVAL % (self.OPT_DEST_DIR, self.SEC_PATHS, self.configPath,
-                'каталог назначения совпадает с одним из исходных каталогов'))
+            # а это проверять ща не будем
+            #if self.check_dest_is_same_with_src_dir():
+            #    raise self.Error(self.E_BADVAL % (self.OPT_DEST_DIR, self.SEC_PATHS, self.configPath,
+            #        'каталог назначения совпадает с одним из исходных каталогов'))
+
+    def check_dest_is_same_with_src_dir(self):
+        """Проверка, не является ли каталог назначения одним из каталогов-
+        источников.
+
+        Возвращает True, если случилась такая досада..."""
+        return self.same_src_dir(self.destinationDir)
 
     def same_src_dir(self, dirname):
         """Возвращает True, если каталог dirname совпадает с одним из
