@@ -165,7 +165,7 @@ def process_files(env, ui, srcDirs=None):
                         statProcessedFiles += 1
                     except (IOError, os.error) as emsg:
                         print_exception()
-                        skippedFiles += 1
+                        statSkippedFiles += 1
                         ui.job_error(u'не удалось % файл - %s' % (env.modeMessages.errmsg, repr(emsg)))
 
     return ('Всего файлов: %d\n%s: %d\nпропущено: %d' % (statTotalFiles,
