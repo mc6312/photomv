@@ -130,7 +130,6 @@
                                     <property name="model">srcdirlist</property>
                                     <property name="headers_visible">False</property>
                                     <property name="show_expanders">False</property>
-                                    <signal name="row-activated" handler="sdlist_row_activated" swapped="no"/>
                                     <child internal-child="selection">
                                       <object class="GtkTreeSelection"/>
                                     </child>
@@ -138,7 +137,9 @@
                                       <object class="GtkTreeViewColumn">
                                         <property name="title" translatable="yes">column</property>
                                         <child>
-                                          <object class="GtkCellRendererToggle" id="crPathCheck"/>
+                                          <object class="GtkCellRendererToggle" id="crPathCheck">
+                                            <signal name="toggled" handler="crPathCheck_toggled_cb" swapped="no"/>
+                                          </object>
                                           <attributes>
                                             <attribute name="active">0</attribute>
                                           </attributes>

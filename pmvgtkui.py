@@ -216,13 +216,15 @@ class GTKUI(UserInterface):
 
             self.btnstart.set_sensitive(len(self.env.sourceDirs) > 0)
 
-    def sdlist_row_activated(self, tv, path, col):
-        itr = self.srcdirlist.get_iter(path)
-        #colix = self.srcdirlvcols.index(col)
-        # пока плюём на номер столбца
+    def crPathCheck_toggled_cb(self, cr, pathstr):
+        # за каким хером сюда прилетает path в виде строки, а не Gtk.TreePath
+        # - вопросы к авторам GTK
+        itr = self.srcdirlist.get_iter(pathstr)
         chk = self.srcdirlist.get(itr, self.SDLC_CHECK)[0]
         self.srcdirlist.set_value(itr, self.SDLC_CHECK, not chk)
-        self.env.sourceDirs[path.get_indices()[0]].ignore = chk
+        # пока тупо преобразуем в строку - потому что в treeview
+        # режим выбора только одной строки
+        self.env.sourceDirs[int(pathstr)].ignore = chk
 
     def chkexitok_toggled(self, btn, data=None):
         self.env.closeIfSuccess = btn.get_active()

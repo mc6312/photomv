@@ -175,6 +175,7 @@ def process_files(env, ui, srcDirs=None):
 
 def main(args):
     ui = None
+    UIClass = None
     try:
         env = Environment(args)
 
@@ -192,8 +193,11 @@ def main(args):
         ui.run()
 
     except Exception as ex:
+        # в stdout ругаемся всегда
         print_exception()
-        UIClass.show_fatal_error(repr(ex))
+        # а в интерфейс, когда он уже есть
+        if UIClass is not None:
+            UIClass.show_fatal_error(repr(ex))
 
         return 1
 
