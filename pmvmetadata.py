@@ -192,7 +192,7 @@ class FileMetadata():
             #
             # MODEL
             #
-            if self.__EXIF_MODEL in md:
+            if md.has_tag(self.__EXIF_MODEL):
                 model = md.get_tag_string(self.__EXIF_MODEL).strip()
                 if model:
                     self.fields[self.MODEL] = model
@@ -242,6 +242,7 @@ if __name__ == '__main__':
                     r = FileMetadata(os.path.join(root, fname), ftypes)
                     print(fname, '->', FileTypes.LONGSTR[ftypes.get_file_type_by_name(fname)])
                 except Exception as ex:
+                    print_exception()
                     print('error getting metadata from "%s" - %s' % (fname, str(ex)))
 
     except Exception:
