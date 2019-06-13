@@ -160,7 +160,8 @@ class FileMetadata():
             # если видеофайлы и могут его содержать, один фиг exiv2
             # на обычных видеофайлах спотыкается
 
-            md = GExiv2.Metadata(filename)
+            md = GExiv2.Metadata.new()
+            md.open_path(filename)
 
             # except GLib.Error as ex:
             # исключения тут обрабатывать не будем - пусть вылетают
