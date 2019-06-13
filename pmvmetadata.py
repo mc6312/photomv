@@ -237,6 +237,9 @@ if __name__ == '__main__':
         ftypes = FileTypes()
 
         for root, dirs, files in os.walk(SOURCE_DIR):
+            if root.startswith('.'):
+                continue
+
             for fname in files:
                 if fname.startswith('.'):
                     continue

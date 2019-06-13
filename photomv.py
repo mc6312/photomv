@@ -70,6 +70,11 @@ def process_files(env, ui, srcDirs=None):
         else:
             for srcroot, dirs, files in os.walk(srcdir):
                 ui.job_progress(-1.0) # progressbar.pulse()
+
+                # "скрытые" (в *nix-образных ОС) каталоги игнорируем нахрен
+                if srcroot.startswith('.'):
+                    continue
+
                 flist = [] # список файлов допустимых типов из текущего каталога
 
                 for fname in files:
