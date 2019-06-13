@@ -246,10 +246,11 @@ if __name__ == '__main__':
 
                 try:
                     r = FileMetadata(os.path.join(root, fname), ftypes)
-                    print(fname, '->', FileTypes.LONGSTR[ftypes.get_file_type_by_name(fname)])
+                    ft = ftypes.get_file_type_by_name(fname)
+                    print(fname, '->', FileTypes.LONGSTR[ft] if ft is not None else '?')
                 except Exception as ex:
-                    print('error getting metadata from "%s" - %s' % (fname, str(ex)))
-                    #print_exception()
+                    print('error getting metadata from "%s" - %s' % (fname, repr(ex)))
+                    print_exception()
                     #break
 
     except Exception:
