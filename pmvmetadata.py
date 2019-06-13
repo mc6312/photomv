@@ -250,7 +250,7 @@ if __name__ == '__main__':
                     print(fname, '->', FileTypes.LONGSTR[ft] if ft is not None else '?')
                 except Exception as ex:
                     print('error getting metadata from "%s" - %s' % (fname, repr(ex)))
-                    print_exception()
+                    #print_exception()
                     #break
 
     except Exception:
