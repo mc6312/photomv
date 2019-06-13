@@ -199,6 +199,7 @@ def main(args):
     UIClass = None
     try:
         env = Environment(args)
+        raise Exception('test')
 
         if env.GUImode:
             from pmvgtkui import GTKUI as UIClass
@@ -214,7 +215,7 @@ def main(args):
         ui.run()
 
     except Exception as ex:
-        # в stdout ругаемся всегда
+        # в stderr ругаемся всегда
         print_exception()
         # а в интерфейс, когда он уже есть
         if UIClass is not None:

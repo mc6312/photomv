@@ -25,14 +25,14 @@ TITLE_VERSION = '%s v%s\n' % (TITLE, VERSION)
 
 import os, os.path
 from traceback import format_exception
-from sys import exc_info
+from sys import exc_info, stderr
 
 
 def print_exception():
     """Печать текущего исключения"""
 
     for s in format_exception(*exc_info()):
-        print(s)
+        print(s, file=stderr)
 
 
 def make_dirs(path, excpt=None):
@@ -93,3 +93,7 @@ if __name__ == '__main__':
     print('[%s test]' % __file__)
 
     #print(normalize_filename('/some/filename:text'))
+    try:
+        raise OSError('test')
+    except Exception:
+        print_exception()
