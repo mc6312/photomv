@@ -129,7 +129,7 @@ def process_files(env, ui, srcDirs=None):
                     except Exception as ex:
                         statSkippedFiles += 1
 
-                        ui.job_error('файл "%s" повреждён или ошибка чтения (%s)' % (fname, str(ex)))
+                        ui.job_error('не удалось получить метаданные файла "%s" - %s' % (fname, str(ex)))
                         # с кривыми файлами ничего не делаем
                         continue
 
