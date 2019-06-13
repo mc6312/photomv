@@ -199,7 +199,6 @@ def main(args):
     UIClass = None
     try:
         env = Environment(args)
-        raise Exception('test')
 
         if env.GUImode:
             from pmvgtkui import GTKUI as UIClass

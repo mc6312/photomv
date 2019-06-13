@@ -228,13 +228,15 @@ class FileMetadata():
 if __name__ == '__main__':
     print('[%s test]' % __file__)
 
+    SOURCE_DIR = os.path.expanduser('~/downloads/src')
+
     try:
         ftypes = FileTypes()
 
-        for root, dirs, files in os.walk(os.path.expanduser('~/downloads/src')):
+        for root, dirs, files in os.walk(SOURCE_DIR):
             for fname in files:
                 r = FileMetadata(os.path.join(root, fname), ftypes)
                 print(fname, '->', FileTypes.LONGSTR[ftypes.get_file_type_by_name(fname)])
 
-    except Exception as ex:
-        print('Can not get file metadata, %s' % str(ex))
+    except Exception:
+        print_exception()

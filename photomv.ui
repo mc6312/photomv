@@ -174,6 +174,7 @@
                                 <property name="can_focus">False</property>
                                 <property name="orientation">vertical</property>
                                 <property name="toolbar_style">icons</property>
+                                <property name="show_arrow">False</property>
                                 <property name="icon_size">2</property>
                                 <child>
                                   <object class="GtkToolButton">
