@@ -249,8 +249,8 @@ if __name__ == '__main__':
                     print(fname, '->', FileTypes.LONGSTR[ftypes.get_file_type_by_name(fname)])
                 except Exception as ex:
                     print('error getting metadata from "%s" - %s' % (fname, str(ex)))
-                    print_exception()
-                    break
+                    #print_exception()
+                    #break
 
     except Exception:
         print_exception()
