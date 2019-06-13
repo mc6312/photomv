@@ -238,12 +238,16 @@ if __name__ == '__main__':
 
         for root, dirs, files in os.walk(SOURCE_DIR):
             for fname in files:
+                if fname.startswith('.'):
+                    continue
+
                 try:
                     r = FileMetadata(os.path.join(root, fname), ftypes)
                     print(fname, '->', FileTypes.LONGSTR[ftypes.get_file_type_by_name(fname)])
                 except Exception as ex:
-                    print_exception()
                     print('error getting metadata from "%s" - %s' % (fname, str(ex)))
+                    print_exception()
+                    break
 
     except Exception:
         print_exception()

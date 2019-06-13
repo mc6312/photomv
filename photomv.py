@@ -73,6 +73,10 @@ def process_files(env, ui, srcDirs=None):
                 flist = [] # список файлов допустимых типов из текущего каталога
 
                 for fname in files:
+                    # "скрытые" (в *nix-образных ОС) файлы игнорируем нахрен
+                    if fname.startswith('.'):
+                        continue
+
                     # файлы неизвестных типов отсеиваем заранее
                     ftype = env.knownFileTypes.get_file_type_by_name(fname)
                     if ftype is None:
