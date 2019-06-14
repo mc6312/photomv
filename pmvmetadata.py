@@ -178,9 +178,9 @@ class FileMetadata():
             # сначала дату
             #
             for tagname in self.__EXIF_DT_TAGS:
-                if tagname in md:
+                if md.has_tag(tagname):
                     # 2016:07:11 20:28:50
-                    dts = md[tagname]
+                    dts = md.get_tag_string(tagname)
                     try:
                         dt = datetime.datetime.strptime(dts, u'%Y:%m:%d %H:%M:%S')
                     except Exception as ex:
@@ -192,8 +192,8 @@ class FileMetadata():
             #
             # MODEL
             #
-            if self.__EXIF_MODEL in md:
-                model = md[self.__EXIF_MODEL].strip()
+            if md.has_tag(self.__EXIF_MODEL):
+                model = md.get_tag_string(self.__EXIF_MODEL).strip()
                 if model:
                     self.fields[self.MODEL] = model
 
@@ -229,15 +229,29 @@ class FileMetadata():
 if __name__ == '__main__':
     print('[%s test]' % __file__)
 
+    from pmvcommon import *
+
     SOURCE_DIR = os.path.expanduser('~/downloads/src')
 
     try:
         ftypes = FileTypes()
 
         for root, dirs, files in os.walk(SOURCE_DIR):
+            if root.startswith('.'):
+                continue
+
             for fname in files:
-                r = FileMetadata(os.path.join(root, fname), ftypes)
-                print(fname, '->', FileTypes.LONGSTR[ftypes.get_file_type_by_name(fname)])
+                if fname.startswith('.'):
+                    continue
+
+                try:
+                    r = FileMetadata(os.path.join(root, fname), ftypes)
+                    ft = ftypes.get_file_type_by_name(fname)
+                    print(fname, '->', FileTypes.LONGSTR[ft] if ft is not None else '?')
+                except Exception as ex:
+                    print('error getting metadata from "%s" - %s' % (fname, repr(ex)))
+                    #print_exception()
+                    #break
 
     except Exception:
         print_exception()
