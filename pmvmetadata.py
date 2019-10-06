@@ -156,9 +156,10 @@ class FileMetadata():
 
         md = None
         if self.fields[self.FILETYPE] != FileTypes.VIDEO:
-            # пытаемся выковыривать exif только из изображений
+            # пытаемся выковыривать exif только из изображений,
             # если видеофайлы и могут его содержать, один фиг exiv2
-            # на обычных видеофайлах спотыкается
+            # на обычных видеофайлах спотыкается, а универсальной
+            # и кроссплатформенной библиотеки что-то пока не нашлось
 
             md = GExiv2.Metadata.new()
             md.open_path(filename)
@@ -248,6 +249,7 @@ if __name__ == '__main__':
                     r = FileMetadata(os.path.join(root, fname), ftypes)
                     ft = ftypes.get_file_type_by_name(fname)
                     print(fname, '->', FileTypes.LONGSTR[ft] if ft is not None else '?')
+                    print(r)
                 except Exception as ex:
                     print('error getting metadata from "%s" - %s' % (fname, repr(ex)))
                     #print_exception()
