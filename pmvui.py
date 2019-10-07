@@ -22,6 +22,8 @@ from pmvconfig import *
 
 
 class UserInterface():
+    UI_NAME = ''
+
     def __init__(self, env, worker):
         """Инициализация междумордия.
         env - экземпляр pmvconfig.Environment

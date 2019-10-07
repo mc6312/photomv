@@ -23,6 +23,8 @@ from locale import getdefaultlocale
 from configparser import RawConfigParser, Error as ConfigParserError
 from collections import namedtuple
 import shutil
+import datetime
+import csv
 
 from pmvcommon import *
 from pmvtemplates import *
@@ -46,6 +48,130 @@ class PMVRawConfigParser(RawConfigParser):
             return self.get(secname, varname).strip()
         else:
             return ''
+
+
+class PMVLogger():
+    """Журнал операций PhotoMV.
+    Хранит данные в формате CSV.
+    Разделители полей - ";", поля могут быть заключены в кавычки (если
+    содержат символ разделителя и/или перевод строки).
+    Записи сохраняются с помощью стандартного питоньего модуля csv,
+    и, соответственно, с его же помощью могут быть и прочитаны.
+    Количество полей в текущей верии - пять:
+    1: дата/время в формате YYYY-MM-DD HH:MM:SS,
+    2: ключевое слово операции (см. KW_xxx),
+    3: True или False - результат выполнения операции,
+    4 и 5: параметры, зависящие от операции."""
+
+    # метка запуска (сообщение с ней вставляется автоматически при вызове метода open)
+    # 3й параметр - всегда True, 4й и 5й параметры - пустые строки
+    KW_START = 'start'
+    # метка останова (сообщение с ней вставляется автоматически при вызове метода close)
+    # 3й параметр - всегда True, 4й и 5й параметры - пустые строки
+    KW_STOP = 'stop'
+    # информационное сообщение
+    # 3й параметр - всегда True, 4й параметр - текст сообщения, 5й - пустая строка
+    KW_MSG = 'msg'
+    # сообщение об ошибке
+    # 3й параметр - всегда False, 4й параметр - текст сообщения, 5й - пустая строка
+    KW_ERROR = 'error'
+    # сообщение о попытке копирования файла
+    # 3й параметр - результат копирования, 4й параметр - исходное имя, 5й - имя назначения
+    KW_CP = 'cp'
+    # сообщение о попытке перемещения файла
+    # 3й параметр - результат перемещения, 4й параметр - исходное имя, 5й - новое имя
+    KW_MV = 'mv'
+    # сообщение о попытке создания каталога
+    # 3й параметр - результат операции, 4й параметр - путь к новому каталогу, 5й - пустая строка
+    KW_MKDIR = 'mkdir'
+
+    LOG_FNAME = 'operations.log'
+    LOG_FNAME_OLD = LOG_FNAME + '.old'
+
+    LOG_TIMESTAMP_FORMAT = '%Y-%m-%d %H:%M:%S'
+
+    def __init__(self, logDir, maxLogSizeMB):
+        """logDir       - полный путь к каталогу с файлами журналов,
+        maxLogSizeMB    - максимальный размер файла журнала в мегабайтах
+                          (для ротации)."""
+
+        self.logDir = logDir
+        self.logPath = os.path.join(self.logDir, self.LOG_FNAME)
+        self.logOldPath = os.path.join(self.logDir, self.LOG_FNAME_OLD)
+
+        self.maxLogSize = maxLogSizeMB * 1024 * 1024
+
+        # файл, куда пишется журнал; значение присваивается из метода open()
+        self.logf = None
+
+        # после вызова метода open() - экземпляр csv.writer
+        self.logwriter = None
+
+    def __repr__(self):
+        """Для отладки"""
+
+        return '''logDir="%s", logPath="%s", maxLogSize=%d''' % (self.logDir,
+            self.logPath, self.maxLogSize)
+
+    def __rotate_logs(self):
+        """наколенная ротация файлов журналов"""
+
+        if self.logf is not None:
+            raise EnvironmentError('ротация открытого файла журнала невозможна')
+
+        if os.path.exists(self.logPath):
+            lfs = os.stat(self.logPath).st_size
+
+            if lfs > self.maxLogSize:
+                if os.path.exists(self.logOldPath):
+                    os.remove(self.logOldPath)
+                    os.rename(self.logPath, self.logOldPath)
+
+    def open(self):
+        if self.logf is None:
+            self.__rotate_logs()
+
+            self.logf = open(self.logPath, 'a')
+            self.logwriter = csv.writer(self.logf, delimiter=';', dialect=csv.excel)
+
+            self.write(None, self.KW_START, True, '', '')
+
+    E_LOG_NOT_OPEN = 'файл журнала "%s" не открыт'
+
+    def close(self):
+        if self.logf is None:
+            raise EnvironmentError(self.E_LOG_NOT_OPEN % self.logPath)
+        else:
+            self.write(None, self.KW_STOP, True, '', '')
+
+            self.logwriter = None
+            self.logf.close()
+            self.logf = None
+
+            self.__rotate_logs()
+
+    def write(self, timestamp, operation, result, param1, param2):
+        """Запись операции в журнал.
+        timestamp   - экземпляр datetime.datetime или None,
+                      в последнем случае используется текущее время
+        operation   - строка, KW_xxx
+        result      - булевское значение, результат операции
+        param1 и param2 зависят от операции."""
+
+        if self.logf is None:
+            raise EnvironmentError(self.E_LOG_NOT_OPEN % self.logPath)
+
+        if timestamp is None:
+            timestamp = datetime.datetime.now()
+
+        self.logwriter.writerow((timestamp.strftime(self.LOG_TIMESTAMP_FORMAT),
+            operation, str(result), param1, param2))
+
+    def write_msg(self, timestamp, message):
+        self.write(timestamp, self.KW_MSG, True, message, '')
+
+    def write_error(self, timestamp, message):
+        self.write(timestamp, self.KW_ERROR, False, message, '')
 
 
 DEFAULT_CONFIG = '''[paths]
@@ -113,6 +239,7 @@ class Environment():
     OPT_IF_EXISTS = 'if-exists'
     OPT_SHOW_SRC_DIR = 'show-src-dir'
     OPT_CLOSE_IF_SUCCESS = 'close-if-success'
+    OPT_MAX_LOG_SIZE = 'max-log-size'
 
     #FileMetadata.FILE_TYPE_IMAGE, FILE_TYPE_RAW_IMAGE, FILE_TYPE_VIDEO
     OPT_KNOWN_FILE_TYPES = ('known-image-types',
@@ -131,6 +258,8 @@ class Environment():
     E_NOSECTION = 'В файле настроек "%s" отсутствует секция "%s"'
     E_CONFIG = 'Ошибка обработки файла настроек - %s'
     E_CMDLINE = 'параметр %d командной строки: %s'
+
+    DEFAULT_MAX_LOG_SIZE = 10 # максимальный размер файла журнала в мегабайтах
 
     def setup_work_mode(self):
         """Вызывать после изменения workModeMove (напр. из GUI)"""
@@ -195,6 +324,9 @@ class Environment():
         # значения словаря - экземпляры класса FileNameTemplate
         self.templates = {}
 
+        # максимальный размер файла журнала в мегабайтах
+        self.maxLogSizeMB = self.DEFAULT_MAX_LOG_SIZE
+
         #
         # см. далее except!
         #
@@ -251,6 +383,12 @@ class Environment():
 
             if self.cfg.has_section(self.SEC_TEMPLATES):
                 self.__read_config_templates()
+
+            #
+            # журналирование операций
+            #
+
+            self.logger = PMVLogger(self.__get_log_directory(), self.maxLogSizeMB)
 
             #
             # ...а вот теперь - разгребаем командную строку, т.к. ее параметры
@@ -472,6 +610,15 @@ class Environment():
 
             self.knownFileTypes.add_extensions(ixopt, exts)
 
+        #
+        # max-log-size
+        #
+        mls = self.cfg.getint(self.SEC_OPTIONS, self.OPT_MAX_LOG_SIZE, fallback=self.DEFAULT_MAX_LOG_SIZE)
+        if mls < 0:
+            mls = self.DEFAULT_MAX_LOG_SIZE
+
+        self.maxLogSizeMB = mls
+
     def __read_config_aliases(self):
         """Разбор секции aliases файла настроек"""
 
@@ -511,6 +658,16 @@ class Environment():
 
         if self.DEFAULT_TEMPLATE_NAME not in self.templates:
             self.templates[self.DEFAULT_TEMPLATE_NAME] = defaultFileNameTemplate
+
+    def __get_log_directory(self):
+        """Возвращает полный путь к каталогу файлов журналов операций.
+        При отсутствии каталога - создаёт его."""
+
+        logdir = os.path.expanduser('~/.cache/photomv')
+        if not os.path.exists(logdir):
+            make_dirs(logdir, self.Error)
+
+        return logdir
 
     def __get_config_path(self, me):
         """Поиск файла конфигурации.
@@ -577,7 +734,7 @@ class Environment():
 
         return self.templates[self.DEFAULT_TEMPLATE_NAME]
 
-    def __str__(self):
+    def __repr__(self):
         """Для отладки"""
         return '''cfg = %s
 modeMoveFiles = %s
@@ -590,7 +747,9 @@ ifFileExists = %s
 knownFileTypes:%s
 showSrcDir = %s
 aliases = %s
-templates = %s''' % (self.cfg,
+templates = %s
+maxLogSizeMB = %d,
+logger = "%s"''' % (self.cfg,
     self.modeMoveFiles,
     self.GUImode,
     self.modeMessages,
@@ -601,11 +760,13 @@ templates = %s''' % (self.cfg,
     self.knownFileTypes,
     self.showSrcDir,
     self.aliases,
-    ', '.join(map(str, self.templates.values())))
+    ', '.join(map(str, self.templates.values())),
+    self.maxLogSizeMB,
+    self.logger)
 
 
 if __name__ == '__main__':
-    print('[%s test]' % __file__)
+    print('[debugging %s]' % __file__)
 
     try:
         sys.argv[0] = 'photocpg.py'
@@ -614,6 +775,7 @@ if __name__ == '__main__':
         if env.error:
             raise Exception(env.error)
         #env.save()
+
     except Environment.Error as ex:
         print('** %s' % str(ex))
         exit(1)
@@ -622,6 +784,14 @@ if __name__ == '__main__':
     #tpl = env.get_template('')
     #print('template:', tpl, repr(tpl))
 
-    env.save()
+    #env.save()
 
     print(env.knownFileTypes.get_file_type_by_name('filename.m4v'))
+
+    env.logger.open()
+    try:
+        env.logger.write(None, env.logger.KW_CP, True, 'oldfile', 'newfile')
+        env.logger.write(None, env.logger.KW_MSG, True, 'some\nmessage', '')
+        env.logger.write(None, env.logger.KW_MSG, True, 'some other message', '')
+    finally:
+        env.logger.close()

@@ -19,8 +19,8 @@
 
 
 TITLE = 'PhotoMV'
-VERSION = '1.4.4'
-TITLE_VERSION = '%s v%s\n' % (TITLE, VERSION)
+VERSION = '1.4.5'
+TITLE_VERSION = '%s v%s' % (TITLE, VERSION)
 
 
 import os, os.path

@@ -25,10 +25,12 @@ import sys
 
 
 class TerminalUI(UserInterface):
+    UI_NAME = 'Terminal'
+
     def __init__(self, env, worker):
         super().__init__(env, worker)
 
-        print(TITLE_VERSION)
+        print('%s\n' % TITLE_VERSION)
 
         self.printIndent = '  ' if env.showSrcDir else ''
 

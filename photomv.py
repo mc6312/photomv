@@ -44,8 +44,10 @@ def process_files(env, ui, srcDirs=None):
     statSkippedFiles = 0
 
     #
-    # 1й проход - подсчет общего количества файлов
+    # 1й проход - подсчет общего количества файлов для индикации прогресса
+    # во втором проходе
     #
+    env.logger.write_msg(None, 'подготовка')
     ui.job_progress(0.0, 'Подготовка...')
 
     if not srcDirs:
@@ -54,7 +56,7 @@ def process_files(env, ui, srcDirs=None):
     # с этим списком будет работать 2й проход
     # содержит он кортежи вида ('каталог', [список файлов]),
     # где список файлов - список строк с именами файлов;
-    # да, оно память жрёть, но не гигабайты же
+    # да, оно память жрёть, а шо таки делать?
     # а кто натравит photomv на гигантскую файлопомойку -
     # сам себе злой буратино
     sourcedirs = []
@@ -66,7 +68,9 @@ def process_files(env, ui, srcDirs=None):
         srcdir = srcdir.path
 
         if not os.path.exists(srcdir) or not os.path.isdir(srcdir):
-            ui.job_error('путь "%s" не существует или указывает не на каталог' % srcdir)
+            emsg = 'путь "%s" не существует или указывает не на каталог' % srcdir
+            ui.job_error(emsg)
+            env.logger.write_error(None, emsg)
         else:
             for srcroot, dirs, files in os.walk(srcdir):
                 ui.job_progress(-1.0) # progressbar.pulse()
@@ -106,17 +110,26 @@ def process_files(env, ui, srcDirs=None):
     #
 
     if not env.destinationDir:
-        raise EnvironmentError('Каталог назначения не указан')
+        emsg = 'Каталог назначения не указан'
+        env.logger.write_error(None, emsg)
+        ui.job_error(emsg)
+        return
 
     if env.check_dest_is_same_with_src_dir():
-        raise EnvironmentError('Каталог назначения совпадает с одним из исходных каталогов')
+        emsg = 'Каталог назначения совпадает с одним из исходных каталогов'
+        env.logger.write_error(None, emsg)
+        ui.job_error(emsg)
+        return
 
     # если каталога назначения нет - пытаемся создать.
     # если не удаётся - тогда уже лаемся
 
     if not os.path.exists(env.destinationDir):
-        make_dirs(destPath, OSError)
-
+        emsg = make_dirs(destPath, None)
+        if emsg:
+            env.logger.write(None, env.logger.KW_MKDIR, False, emsg, '')
+            ui.job_error(emsg)
+            return
 
     #
     # 2й проход - собственно обработка файлов
@@ -130,6 +143,9 @@ def process_files(env, ui, srcDirs=None):
             for fname in flist:
                 nFileIx += 1
 
+                # метка времени для нескольких сообщений при файловых операциях должна быть одинаковой
+                timestamp = datetime.datetime.now()
+
                 srcPathName = os.path.join(srcdir, fname)
                 if os.path.isfile(srcPathName):
                     # всякие там символические ссылки пока нафиг
@@ -138,7 +154,9 @@ def process_files(env, ui, srcDirs=None):
                     except Exception as ex:
                         statSkippedFiles += 1
 
-                        ui.job_error('не удалось получить метаданные файла "%s" - %s' % (fname, str(ex)))
+                        emsg = 'не удалось получить метаданные файла "%s" - %s' % (fname, str(ex))
+                        env.logger.write_error(timestamp, emsg)
+                        ui.job_error(emsg)
                         # с кривыми файлами ничего не делаем
                         continue
 
@@ -151,7 +169,12 @@ def process_files(env, ui, srcDirs=None):
                     newSubDir, newFileName, newFileExt = fntemplate.get_new_file_name(env, metadata)
 
                     destPath = os.path.join(env.destinationDir, newSubDir)
-                    make_dirs(destPath, OSError)
+
+                    emsg = make_dirs(destPath, None)
+                    if emsg:
+                        env.logger.write(timestamp, env.logger.KW_MKDIR, False, emsg, '')
+                        ui.job_error(emsg)
+                        return
 
                     newFileNameExt = newFileName + newFileExt
 
@@ -161,7 +184,10 @@ def process_files(env, ui, srcDirs=None):
 
                     if os.path.exists(destPathName):
                         if env.ifFileExists == env.FEXIST_SKIP:
-                            ui.job_warning('файл "%s" уже существует, пропускаю' % newFileNameExt)
+                            smsg = 'файл "%s" уже существует, пропускаю' % newFileNameExt
+                            ui.job_warning(smsg)
+                            env.logger.write(timestamp,
+                                env.logger.KW_MSG, True, smsg, '')
                             statSkippedFiles += 1
                             continue
                         elif env.ifFileExists == env.FEXIST_RENAME:
@@ -178,7 +204,9 @@ def process_files(env, ui, srcDirs=None):
                                     break
 
                             if not canBeRenamed:
-                                ui.job_error('в каталоге "%s" слишком много файлов с именем %s*%s' % (destPath, newFileName, newFileExt))
+                                emsg = 'в каталоге "%s" слишком много файлов с именем %s*%s' % (destPath, newFileName, newFileExt)
+                                ui.job_error(emsg)
+                                env.logger.write(timestamp, env.logger.KW_MSG, True, emsg, '')
 
                                 statSkippedFiles += 1
                                 continue
@@ -190,13 +218,21 @@ def process_files(env, ui, srcDirs=None):
                     # а вот теперь копируем или перемещаем файл
                     #
 
+                    fops = env.logger.KW_MV if env.modeMoveFiles else env.logger.KW_CP
+
                     try:
                         env.modeFileOp(srcPathName, destPathName)
+                        fopok = True
                         statProcessedFiles += 1
                     except (IOError, os.error) as emsg:
                         print_exception()
                         statSkippedFiles += 1
-                        ui.job_error(u'не удалось % файл - %s' % (env.modeMessages.errmsg, repr(emsg)))
+                        fopok = False
+                        emsg = 'не удалось % файл - %s' % (env.modeMessages.errmsg, repr(emsg))
+                        ui.job_error(emsg)
+                        env.logger.write_error(timestamp, emsg)
+
+                    env.logger.write(timestamp, fops, fopok, srcPathName, destPathName)
 
     return ('Всего файлов: %d\n%s: %d\nпропущено: %d' % (statTotalFiles,
         env.modeMessages.statmsg, statProcessedFiles,
@@ -209,18 +245,28 @@ def main(args):
     try:
         env = Environment(args)
 
-        if env.GUImode:
-            from pmvgtkui import GTKUI as UIClass
-        else:
-            from pmvtermui import TerminalUI as UIClass
+        #
+        # а вот всё последующее логируем
+        #
+        env.logger.open()
+        try:
+            if env.GUImode:
+                from pmvgtkui import GTKUI as UIClass
+            else:
+                from pmvtermui import TerminalUI as UIClass
 
-        if env.error:
-            # см. Environment.__init__()
-            # ругаемся только сейчас, когда уже известен UIClass
-            raise Exception(env.error)
+            env.logger.write_msg(None, '%s (%s)' % (TITLE_VERSION, UIClass.UI_NAME))
 
-        ui = UIClass(env, process_files)
-        ui.run()
+            if env.error:
+                # см. Environment.__init__()
+                # ругаемся только сейчас, когда уже известен UIClass
+                env.logger.write_error(None, env.error)
+                raise Exception(env.error)
+
+            ui = UIClass(env, process_files)
+            ui.run()
+        finally:
+            env.logger.close()
 
     except Exception as ex:
         # в stderr ругаемся всегда

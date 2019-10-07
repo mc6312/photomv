@@ -59,6 +59,8 @@ def choose_directory(parent, title, create, dirpath=None):
 
 
 class GTKUI(UserInterface):
+    UI_NAME = 'GTK UI'
+
     PAGE_START, PAGE_JOB = range(2)
 
     SDLC_CHECK, SDLC_SRCDIR = range(2)
