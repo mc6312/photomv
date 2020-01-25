@@ -19,7 +19,7 @@
 
 
 TITLE = 'PhotoMV'
-VERSION = '1.4.5'
+VERSION = '1.5.0'
 TITLE_VERSION = '%s v%s' % (TITLE, VERSION)
 
 
@@ -63,7 +63,9 @@ def validate_path(path):
     return os.path.abspath(os.path.expanduser(path))
 
 
-INVALID_FNAME_CHARS = ':\/<>'
+INVALID_TEMPLATE_CHARS = '\t\n\r*?:"<>|%s' % ('/' if os.path.sep == '\\' else '\\')
+INVALID_FNAME_CHARS = '%s%s' % (INVALID_TEMPLATE_CHARS, os.path.sep)
+
 
 def normalize_filename(s):
     """Ищет в строке символы, недопустимые для имени файла

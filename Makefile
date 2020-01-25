@@ -6,7 +6,7 @@ basename = photomv
 zipname = $(basename).zip
 arcname = $(basename)$(arcx)
 srcarcname = $(basename)-src$(arcx)
-srcs = __main__.py photomv.py pmvcommon.py pmvconfig.py pmvtemplates.py pmvmetadata.py pmvui.py pmvgtkui.py pmvtermui.py gtktools.py photomv.ui photomv.svg
+srcs = __main__.py photomv.py pmvcommon.py pmvconfig.py pmvtemplates.py pmvmetadata.py photomv.svg
 backupdir = ~/shareddocs/pgm/python/
 
 app:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-""" Copyright 2017 MC-6312
+""" Copyright 2017-2020 MC-6312
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -27,14 +27,10 @@ from pmvcommon import *
 from pmvconfig import *
 
 
-def process_files(env, ui, srcDirs=None):
+def process_files(env):
     """Обработка исходных каталогов.
 
     env     - экземпляр pmvconfig.Environment
-    ui      - экземпляр класса pmvui.UserInterface
-    srcDirs - список исходных каталогов;
-              если None или пустой список - будет использован
-              список env.sourceDirs
 
     Возвращает список строк, содержащих сообщения
     (кол-во обработанных файлов и т.п.)."""
@@ -43,15 +39,39 @@ def process_files(env, ui, srcDirs=None):
     statProcessedFiles = 0
     statSkippedFiles = 0
 
+    def job_show_dir(dirname=''):
+        if env.showSrcDir and dirname:
+            print(dirname, file=sys.stderr)
+
+    def job_progress(progress:float, msg=''):
+        pg = '' if progress < 0.0 else '%3.1f%% ' % progress
+
+        if msg:
+            pg = '%s%s' % (pg, msg)
+
+        if pg:
+            print(msg, file=sys.stderr)
+
+    def job_error(msg):
+        print('* %s' % msg, file=sys.stderr)
+
+    def job_warning(msg):
+        job_error(msg, file=sys.stderr)
+
+    def critical_error(msg):
+        print('* %s' % msg, file=sys.stderr)
+
+    def show_fatal_error(msg):
+        print('* %s' % msg, file=sys.stderr)
+
     #
     # 1й проход - подсчет общего количества файлов для индикации прогресса
     # во втором проходе
     #
     env.logger.write_msg(None, 'подготовка')
-    ui.job_progress(0.0, 'Подготовка...')
+    job_progress(0.0, 'Подготовка...')
 
-    if not srcDirs:
-        srcDirs = env.sourceDirs
+    srcDirs = env.sourceDirs
 
     # с этим списком будет работать 2й проход
     # содержит он кортежи вида ('каталог', [список файлов]),
@@ -69,12 +89,10 @@ def process_files(env, ui, srcDirs=None):
 
         if not os.path.exists(srcdir) or not os.path.isdir(srcdir):
             emsg = 'путь "%s" не существует или указывает не на каталог' % srcdir
-            ui.job_error(emsg)
+            job_error(emsg)
             env.logger.write_error(None, emsg)
         else:
             for srcroot, dirs, files in os.walk(srcdir):
-                ui.job_progress(-1.0) # progressbar.pulse()
-
                 # "скрытые" (в *nix-образных ОС) каталоги игнорируем нахрен
                 if srcroot.startswith('.'):
                     continue
@@ -112,13 +130,13 @@ def process_files(env, ui, srcDirs=None):
     if not env.destinationDir:
         emsg = 'Каталог назначения не указан'
         env.logger.write_error(None, emsg)
-        ui.job_error(emsg)
+        job_error(emsg)
         return
 
     if env.check_dest_is_same_with_src_dir():
         emsg = 'Каталог назначения совпадает с одним из исходных каталогов'
         env.logger.write_error(None, emsg)
-        ui.job_error(emsg)
+        job_error(emsg)
         return
 
     # если каталога назначения нет - пытаемся создать.
@@ -128,7 +146,7 @@ def process_files(env, ui, srcDirs=None):
         emsg = make_dirs(destPath, None)
         if emsg:
             env.logger.write(None, env.logger.KW_MKDIR, False, emsg, '')
-            ui.job_error(emsg)
+            job_error(emsg)
             return
 
     #
@@ -138,7 +156,7 @@ def process_files(env, ui, srcDirs=None):
         nFileIx = 0
 
         for srcdir, flist in sourcedirs:
-            ui.job_show_dir(srcdir)
+            job_show_dir(srcdir)
 
             for fname in flist:
                 nFileIx += 1
@@ -156,7 +174,7 @@ def process_files(env, ui, srcDirs=None):
 
                         emsg = 'не удалось получить метаданные файла "%s" - %s' % (fname, str(ex))
                         env.logger.write_error(timestamp, emsg)
-                        ui.job_error(emsg)
+                        job_error(emsg)
                         # с кривыми файлами ничего не делаем
                         continue
 
@@ -173,19 +191,19 @@ def process_files(env, ui, srcDirs=None):
                     emsg = make_dirs(destPath, None)
                     if emsg:
                         env.logger.write(timestamp, env.logger.KW_MKDIR, False, emsg, '')
-                        ui.job_error(emsg)
+                        job_error(emsg)
                         return
 
                     newFileNameExt = newFileName + newFileExt
 
-                    ui.job_progress(float(nFileIx) / statTotalFiles, '%s -> %s' % (fname, newFileNameExt))
+                    job_progress(float(nFileIx) / statTotalFiles, '%s -> %s' % (fname, newFileNameExt))
 
                     destPathName = os.path.join(destPath, newFileNameExt)
 
                     if os.path.exists(destPathName):
                         if env.ifFileExists == env.FEXIST_SKIP:
                             smsg = 'файл "%s" уже существует, пропускаю' % newFileNameExt
-                            ui.job_warning(smsg)
+                            job_warning(smsg)
                             env.logger.write(timestamp,
                                 env.logger.KW_MSG, True, smsg, '')
                             statSkippedFiles += 1
@@ -205,7 +223,7 @@ def process_files(env, ui, srcDirs=None):
 
                             if not canBeRenamed:
                                 emsg = 'в каталоге "%s" слишком много файлов с именем %s*%s' % (destPath, newFileName, newFileExt)
-                                ui.job_error(emsg)
+                                job_error(emsg)
                                 env.logger.write(timestamp, env.logger.KW_MSG, True, emsg, '')
 
                                 statSkippedFiles += 1
@@ -229,7 +247,7 @@ def process_files(env, ui, srcDirs=None):
                         statSkippedFiles += 1
                         fopok = False
                         emsg = 'не удалось % файл - %s' % (env.modeMessages.errmsg, repr(emsg))
-                        ui.job_error(emsg)
+                        job_error(emsg)
                         env.logger.write_error(timestamp, emsg)
 
                     env.logger.write(timestamp, fops, fopok, srcPathName, destPathName)
@@ -240,46 +258,32 @@ def process_files(env, ui, srcDirs=None):
 
 
 def main(args):
-    ui = None
-    UIClass = None
+    print('%s\n' % TITLE_VERSION)
+
     try:
-        env = Environment(args)
+        env = Environment()
 
         #
         # а вот всё последующее логируем
         #
         env.logger.open()
         try:
-            if env.GUImode:
-                from pmvgtkui import GTKUI as UIClass
-            else:
-                from pmvtermui import TerminalUI as UIClass
+            env.logger.write_msg(None, '%s' % TITLE_VERSION)
 
-            env.logger.write_msg(None, '%s (%s)' % (TITLE_VERSION, UIClass.UI_NAME))
-
-            if env.error:
-                # см. Environment.__init__()
-                # ругаемся только сейчас, когда уже известен UIClass
-                env.logger.write_error(None, env.error)
-                raise Exception(env.error)
-
-            ui = UIClass(env, process_files)
-            ui.run()
+            process_files(env)
         finally:
             env.logger.close()
 
     except Exception as ex:
-        # в stderr ругаемся всегда
         print_exception()
-        # а в интерфейс, когда он уже есть
-        if UIClass is not None:
-            es = str(ex).strip()
-            if not es:
-                es = repr(ex)
-            UIClass.show_fatal_error(es)
+
+        es = str(ex).strip()
+        if not es:
+            es = repr(ex)
+
+        show_fatal_error(es)
 
         return 1
-
 
     return 0
 

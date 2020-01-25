@@ -27,6 +27,8 @@ import datetime
 from collections import namedtuple
 import re
 
+from pmvcommon import *
+
 
 class FileTypes():
     """Вспомогательный класс для определения типа файла по расширению."""
@@ -36,8 +38,10 @@ class FileTypes():
     STR = {IMAGE:'p', RAW_IMAGE:'p', VIDEO:'v'}
     LONGSTR = {IMAGE:'photo', RAW_IMAGE:'raw', VIDEO:'video'}
 
+    STR_TO_TYPE = dict(map(lambda v: (v[1], v[0]), LONGSTR.items()))
+
     DEFAULT_FILE_EXTENSIONS = {
-        # список форматов RAW, спионеренный в RawTherapee
+        # список форматов RAW, спионеренный из RawTherapee
         RAW_IMAGE: {'.nef', '.cr2', '.cr3', '.crf',
             '.crw', '.3fr', '.arw', '.dcr', '.dng', '.fff', '.iiq', '.kdc',
             '.mef', '.mos', '.mrw', '.nrw', '.orf', '.pef', '.raf', '.raw',
@@ -46,11 +50,51 @@ class FileTypes():
         IMAGE: {'.tif', '.tiff', '.jpg', '.jpeg', '.png'},
         # и видео, какое удалось вспомнить
         VIDEO: {'.mov', '.avi', '.mpg', '.vob', '.ts',
-            '.mp4', '.m4v', '.mkv'}
+            '.mp4', '.m4v', '.mkv', '.mts'}
         }
 
     def __init__(self):
-        self.knownExtensions = self.DEFAULT_FILE_EXTENSIONS
+        self.knownExtensions = dict()
+
+        # иначе хитрожопый питон может впихнуть ссылку на DEFAULT_FILE_EXTENSIONS вместо копии
+        for ftype in self.DEFAULT_FILE_EXTENSIONS:
+            self.knownExtensions[ftype] = self.DEFAULT_FILE_EXTENSIONS[ftype].copy()
+
+    @staticmethod
+    def extensions_from_str(s):
+        """Преобразование строки вида '.ext .ext' в set, с проверкой
+        правильности.
+        Возвращает кортеж из двух элементов:
+        1й: булевское значение, True в случае успеха;
+        2й: если 1й==True - множество из строк,
+            если 1й==False - строка с сообщением об ошибке."""
+
+        extlst = filter(None, s.lower().split(None))
+
+        exts = set()
+
+        for ext in extlst:
+            if ext.endswith('.'):
+                return (False, 'расширение не должно заканчиваться точкой')
+
+            if tuple(filter(lambda c: c in INVALID_FNAME_CHARS, ext)):
+                return (False, 'расширение содержит недопустимые символы')
+
+            if not ext.startswith('.'):
+                ext = '.%s' % ext
+
+            if len(ext) < 2:
+                return (False, 'пустое расширение')
+
+            exts.add(ext)
+
+        return (True, exts)
+
+    @staticmethod
+    def extensions_to_str(exts):
+        """Преобразование множества строк exts в строку (разделители - пробелы)."""
+
+        return ' '.join(sorted(exts))
 
     def add_extensions(self, ftype, extensions):
         """Добавление расширений в словарь известных расширений.
@@ -59,7 +103,6 @@ class FileTypes():
         extensions  - множество строк вида '.расширение'."""
 
         self.knownExtensions[ftype].update(extensions)
-
 
     def get_file_type(self, fileext):
         """Определяет по расширению fileext, известен ли программе
@@ -71,6 +114,7 @@ class FileTypes():
             if fileext in self.knownExtensions[ft]:
                 return ft
 
+        # просто так нагляднее
         return None
 
     def get_file_type_by_name(self, filename):
@@ -78,14 +122,14 @@ class FileTypes():
 
         return self.get_file_type(os.path.splitext(filename)[1].lower())
 
-    def __str__(self):
+    def __repr__(self):
         """Костыль для отладки"""
 
-        t = '\n'.join(map(lambda ft: '  %s: %s' % (self.LONGSTR[ft],
-                            ', '.join(self.knownExtensions[ft])),
-                        self.knownExtensions))
-        print(t)
-        return t
+        return '%s(%s)' % (self.__class__.__name__,
+            '\n'.join(map(lambda ft: '%s: "%s"' % (self.LONGSTR[ft],
+                          ' '.join(self.knownExtensions[ft])),
+                      self.knownExtensions))
+            )
 
 
 class FileMetadata():
@@ -96,10 +140,10 @@ class FileMetadata():
     __EXIF_DT_TAGS = ['Exif.Image.OriginalDateTime', 'Exif.Image.DateTime']
     __EXIF_MODEL = 'Exif.Image.Model'
 
-    __N_FIELDS = 9
+    __N_FIELDS = 10
 
     FILETYPE, MODEL, PREFIX, NUMBER, \
-    YEAR, MONTH, DAY, HOUR, MINUTE = range(__N_FIELDS)
+    YEAR, MONTH, DAY, HOUR, MINUTE, SECOND = range(__N_FIELDS)
 
     # выражение для выделения префикса и номера из имени файла
     # может не работать на файлах от некоторых камер - производители
@@ -118,6 +162,9 @@ class FileMetadata():
                       содержат значения в виде строк или None
         fileName    - имя файла без расширения
         fileExt     - и расширение
+        fileSize    - размер файла в байтах
+        timestamp   - экземпляр datetime.datetime со значениями из EXIF
+                      (если таковые нашлись) или mtime файла
 
         В случае неизвестного типа файлов всем полям присваивается
         значение None.
@@ -173,7 +220,7 @@ class FileMetadata():
             # даже если в файле нет EXIF
             #    print('GLib.Error: %s - %s' % (GLib.strerror(ex.code), ex.message))
 
-        dt = None
+        self.timestamp = None
 
         if md:
             # ковыряемся в тэгах:
@@ -186,10 +233,10 @@ class FileMetadata():
                     # 2016:07:11 20:28:50
                     dts = md.get_tag_string(tagname)
                     try:
-                        dt = datetime.datetime.strptime(dts, u'%Y:%m:%d %H:%M:%S')
+                        self.timestamp = datetime.datetime.strptime(dts, u'%Y:%m:%d %H:%M:%S')
                     except Exception as ex:
                         print('* Warning!', str(ex))
-                        dt = None
+                        self.timestamp = None
                         continue
                     break
 
@@ -202,38 +249,49 @@ class FileMetadata():
                     self.fields[self.MODEL] = model
 
         #
+        fstatr = os.stat(filename)
+
+        # размер файла в байтах
+        self.fileSize = fstatr.st_size
+
+        #
         # доковыриваем дату
         #
-        if dt:
+        if self.timestamp:
             # вахЪ! дата нашлась в EXIF!
-            if dt.year < 1800 or dt.month <1 or dt.month > 12 or dt.day <1 or dt.day > 31:
+            if self.timestamp.year < 1800 or self.timestamp.month <1 or self.timestamp.month > 12 or self.timestamp.day <1 or self.timestamp.day > 31:
                 # но содержит какую-то херню
-                dt = None
-        else:
-            # фигвам. берём в качестве даты создания mtime файла
-            dt = datetime.datetime.fromtimestamp(os.stat(filename).st_mtime)
+                self.timestamp = None
 
-        self.fields[self.YEAR]      = '%.4d' % dt.year
-        self.fields[self.MONTH]     = '%.2d' % dt.month
-        self.fields[self.DAY]       = '%.2d' % dt.day
-        self.fields[self.HOUR]      = '%.2d' % dt.hour
-        self.fields[self.MINUTE]    = '%.2d' % dt.minute
+        # фигвам. берём в качестве даты создания mtime файла
+        if self.timestamp is None:
+            self.timestamp = datetime.datetime.fromtimestamp(fstatr.st_mtime)
+
+        self.fields[self.YEAR]      = '%.4d' % self.timestamp.year
+        self.fields[self.MONTH]     = '%.2d' % self.timestamp.month
+        self.fields[self.DAY]       = '%.2d' % self.timestamp.day
+        self.fields[self.HOUR]      = '%.2d' % self.timestamp.hour
+        self.fields[self.MINUTE]    = '%.2d' % self.timestamp.minute
+        self.fields[self.SECOND]    = '%.2d' % self.timestamp.second
 
     __FLD_NAMES = ('FILETYPE', 'MODEL', 'PREFIX', 'NUMBER',
-        'YEAR', 'MONTH', 'DAY', 'HOUR', 'MINUTE')
+        'YEAR', 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND')
 
-    def __str__(self):
+    def __repr__(self):
         """Для отладки"""
 
-        r = ['fileName="%s"' % self.fileName, 'fileExt="%s"' % self.fileExt]
+        r = ['fileName="%s"' % self.fileName,
+             'fileExt="%s"' % self.fileExt,
+             'fileSize=%d' % self.fileSize]
+
         r += (map(lambda f: '%s="%s"' % (self.__FLD_NAMES[f[0]], f[1]), enumerate(self.fields)))
-        return '\n'.join(r)
+        return '%s(%s)' % (self.__class__.__name__, '\n'.join(r))
 
 
 if __name__ == '__main__':
-    print('[%s test]' % __file__)
+    print('[debugging %s]' % __file__)
 
-    from pmvcommon import *
+    #from pmvgcommon import *
 
     SOURCE_DIR = os.path.expanduser('~/downloads/src')
 
@@ -248,11 +306,12 @@ if __name__ == '__main__':
                 if fname.startswith('.'):
                     continue
 
+                ft = ftypes.get_file_type_by_name(fname)
+                print(fname, '->', FileTypes.LONGSTR[ft] if ft is not None else '?')
+
                 try:
                     r = FileMetadata(os.path.join(root, fname), ftypes)
-                    ft = ftypes.get_file_type_by_name(fname)
-                    print(fname, '->', FileTypes.LONGSTR[ft] if ft is not None else '?')
-                    print(r)
+                    #print(r)
                 except Exception as ex:
                     print('error getting metadata from "%s" - %s' % (fname, repr(ex)))
                     #print_exception()

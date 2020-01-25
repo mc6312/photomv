@@ -25,6 +25,7 @@ from collections import namedtuple
 import shutil
 import datetime
 import csv
+import argparse
 
 from pmvcommon import *
 from pmvtemplates import *
@@ -110,8 +111,11 @@ class PMVLogger():
     def __repr__(self):
         """Для отладки"""
 
-        return '''logDir="%s", logPath="%s", maxLogSize=%d''' % (self.logDir,
-            self.logPath, self.maxLogSize)
+        return '%s(logDir="%s", logPath="%s", maxLogSize=%d)' % (
+            self.__class__.__name__,
+            self.logDir,
+            self.logPath,
+            self.maxLogSize)
 
     def __rotate_logs(self):
         """наколенная ротация файлов журналов"""
@@ -195,9 +199,7 @@ class Environment():
     """Все настройки"""
 
     MODE_MOVE = 'photomv'
-    MODE_MOVE_GUI = 'photomvg'
     MODE_COPY = 'photocp'
-    MODE_COPY_GUI = 'photocpg'
 
     CFG_FILE = 'settings.ini'
 
@@ -206,13 +208,15 @@ class Environment():
 
     # эхехех, сюда бы dataclass из Python 3.7...
     class SourceDir:
+        __slots__ = 'path', 'ignore'
+
         def __init__(self, path, ignore=False):
             self.path = path
             self.ignore = ignore
 
         def __repr__(self):
             # для отладки
-            return '(path="%s", ignore=%s)' % (self.path, self.ignore)
+            return '%s(path="%s", ignore=%s)' % (self.__class__.__name__, self.path, self.ignore)
 
     FEXIST_SKIP, FEXIST_RENAME, FEXIST_OVERWRITE = range(3)
 
@@ -238,7 +242,6 @@ class Environment():
     SEC_OPTIONS = 'options'
     OPT_IF_EXISTS = 'if-exists'
     OPT_SHOW_SRC_DIR = 'show-src-dir'
-    OPT_CLOSE_IF_SUCCESS = 'close-if-success'
     OPT_MAX_LOG_SIZE = 'max-log-size'
 
     #FileMetadata.FILE_TYPE_IMAGE, FILE_TYPE_RAW_IMAGE, FILE_TYPE_VIDEO
@@ -262,7 +265,7 @@ class Environment():
     DEFAULT_MAX_LOG_SIZE = 10 # максимальный размер файла журнала в мегабайтах
 
     def setup_work_mode(self):
-        """Вызывать после изменения workModeMove (напр. из GUI)"""
+        """Вызывать после изменения workModeMove"""
 
         if self.modeMoveFiles:
             self.modeMessages = workmodemsgs('переместить', 'перемещено')
@@ -271,23 +274,16 @@ class Environment():
             self.modeMessages = workmodemsgs('скопировать', 'скопировано')
             self.modeFileOp = shutil.copy
 
-    def __init__(self, args):
-        """Разбор командной строки, поиск и загрузка файла конфигурации.
+    def __init__(self):
+        """Поиск и загрузка файла конфигурации, после - разбор командной
+        строки.
 
-        args            - аргументы командной строки (список строк),
-                          например, значение sys.argv
-
-        В первую очередь пытается определить режим работы
-        (перемещение/копирование), и режим интерфейса (консоль/графика).
-
-        В случае успеха self.error устанавливается в None.
-        В случае ошибок присваивает self.error строку с сообщением об ошибке."""
+        В случае ошибок генерирует исключения."""
 
         #
         # параметры
         #
         self.modeMoveFiles = None
-        self.GUImode = False
 
         self.modeMessages = None
         self.modeFileOp = None
@@ -308,9 +304,6 @@ class Environment():
         # показывать ли каталоги-источники
         self.showSrcDir = False
 
-        # закрывать ли программу в случае успешного завершения (копирования)
-        self.closeIfSuccess = True
-
         # сокращенные псевдонимы камер
         # ключи словаря - названия камер, соответствующие соотв. полю EXIF
         # значения - строки псевдонимов
@@ -327,167 +320,181 @@ class Environment():
         # максимальный размер файла журнала в мегабайтах
         self.maxLogSizeMB = self.DEFAULT_MAX_LOG_SIZE
 
+
         #
-        # см. далее except!
+        # ищем файл конфигурации
         #
-        self.error = None
+        self.configPath = self.__get_config_path(sys.argv[0])
+        self.cfg = PMVRawConfigParser()
 
-        try:
-            # определение режима работы - делаем в самом начале,
-            # т.к. нужно сразу знать, как именно показывать сообщения
-            # об ошибках
-            # __detect_work_mode() по возможности НЕ должно генерировать
-            # исключений!
-            self.__detect_work_mode(args)
-            self.setup_work_mode()
+        with open(self.configPath, 'r', encoding=ENCODING) as f:
+            try:
+                self.cfg.read_file(f)
+            except ConfigParserError as ex:
+                raise self.Error(self.E_CONFIG % str(ex))
 
-            #
-            # ищем файл конфигурации
-            #
-            self.configPath = self.__get_config_path(args[0])
-            self.cfg = PMVRawConfigParser()
+        # прочие исключения пока исключения не проверяем.
+        # в документации об обработке ошибок чтения что-то мутно
 
-            with open(self.configPath, 'r', encoding=ENCODING) as f:
-                try:
-                    self.cfg.read_file(f)
-                except ConfigParserError as ex:
-                    raise self.Error(self.E_CONFIG % str(ex))
+        #
+        # выгребаем настройки
+        #
 
-            # прочие исключения пока исключения не проверяем.
-            # в документации об обработке ошибок чтения что-то мутно
+        if self.cfg.has_section(self.SEC_PATHS):
+            self.__read_config_paths()
+        else:
+            raise self.Error(self.E_NOSECTION % (self.configPath, self.SEC_PATHS))
 
-            #
-            # выгребаем настройки
-            #
+        if self.cfg.has_section(self.SEC_OPTIONS):
+            self.__read_config_options()
+        else:
+            raise self.Error(self.E_NOSECTION % (self.configPath, self.SEC_OPTIONS))
 
-            if self.cfg.has_section(self.SEC_PATHS):
-                self.__read_config_paths()
-            else:
-                raise self.Error(self.E_NOSECTION % (self.configPath, self.SEC_PATHS))
+        #
+        # сокращённые имена камер
+        #
 
-            if self.cfg.has_section(self.SEC_OPTIONS):
-                self.__read_config_options()
-            else:
-                raise self.Error(self.E_NOSECTION % (self.configPath, self.SEC_OPTIONS))
+        if self.cfg.has_section(self.SEC_ALIASES):
+            self.__read_config_aliases()
 
-            #
-            # сокращённые имена камер
-            #
+        #
+        # шаблоны
+        #
 
-            if self.cfg.has_section(self.SEC_ALIASES):
-                self.__read_config_aliases()
+        if self.cfg.has_section(self.SEC_TEMPLATES):
+            self.__read_config_templates()
 
-            #
-            # шаблоны
-            #
+        #
+        # журналирование операций
+        #
 
-            if self.cfg.has_section(self.SEC_TEMPLATES):
-                self.__read_config_templates()
+        self.logger = PMVLogger(self.__get_log_directory(), self.maxLogSizeMB)
 
-            #
-            # журналирование операций
-            #
+        #
+        # ...а вот теперь - разгребаем командную строку, т.к. ее параметры
+        # перекрывают файл настроек
+        #
 
-            self.logger = PMVLogger(self.__get_log_directory(), self.maxLogSizeMB)
+        self.__detect_work_mode()
+        self.__parse_cmdline_options()
 
-            #
-            # ...а вот теперь - разгребаем командную строку, т.к. ее параметры
-            # перекрывают файл настроек
-            #
+        if self.modeMoveFiles is None:
+            raise self.Error('Меня зовут %s, и я не знаю, что делать.' % bname)
 
-            self.__parse_cmdline_options(args)
+        #
+        # проверяем, все ли нужные параметры указаны
+        #
+        if not self.sourceDirs:
+            raise self.Error('не указано ни одного существующего исходного каталога')
 
-        except self.Error as ex:
-            # конструктор НЕ ДОЛЖЕН падать от self.Error - оно будет
-            # обработано снаружи по содержимому self.error
-            # с прочими исключениями - падаем, ибо это предположительно
-            # что-то более серьёзное
-            # на этом этапе поля self.modeMoveFiles,
-            # self.GUImode уже установлены в известные значения
-            # и сообщение об ошибке где-то снаружи должно быть показано
-            # в правильном режиме
-            self.error = str(ex)
+        # каталог назначения проверяем перед началом работы с файлами,
+        # т.к. его может потребоваться создать именно тогда
 
-    CMDOPT_GUI = {'-g', '--gui'}
-    CMDOPT_NOGUI = {'-n', '--no-gui'}
-    CMDOPT_COPY = {'-c', '--copy'}
-    CMDOPT_MOVE = {'-m', '--move'}
-    CMDOPTS_WORKMODE = CMDOPT_COPY | CMDOPT_MOVE | CMDOPT_GUI | CMDOPT_NOGUI
-    __CMDOPT_IF_EXISTS_SHORT = '-e'
-    CMDOPT_IF_EXISTS = {__CMDOPT_IF_EXISTS_SHORT, '--if-exists'}
+        # минимальное причёсывание
+        if self.destinationDir:
+            self.destinationDir = validate_path(self.destinationDir)
 
-    def __detect_work_mode(self, args):
-        """Определение режима работы (перемещение/копирование,
-        консольный/графический) по имени исполняемого файла и/или
-        по ключам командной строки."""
+            if os.path.exists(self.destinationDir) and not os.path.isdir(self.destinationDir):
+                raise self.Error('путь "%s" указывает не на каталог' % self.destinationDir)
+
+        #
+        self.setup_work_mode()
+
+    def __detect_work_mode(self):
+        """Предварительное определение режима работы
+        (перемещение/копирование) по имени исполняемого файла."""
 
         #
         # определяем, кто мы такое
         #
-        bname = os.path.basename(args[0])
+        bname = os.path.basename(sys.argv[0])
 
         # имя того, что запущено, в т.ч. если вся куча засунута
         # в архив ZIP
 
         bnamecmd = os.path.splitext(bname)[0].lower()
 
-        if bnamecmd in (Environment.MODE_MOVE, Environment.MODE_MOVE_GUI):
+        if bnamecmd == self.MODE_MOVE:
             self.modeMoveFiles = True
-        elif bnamecmd in (Environment.MODE_COPY, Environment.MODE_COPY_GUI):
+        elif bnamecmd == self.MODE_COPY:
             self.modeMoveFiles = False
         else:
             # ругаться будем потом, если режим не указан в командной строке
             self.modeMoveFiles = None
 
-        self.GUImode = bnamecmd in (Environment.MODE_MOVE_GUI, Environment.MODE_COPY_GUI)
-        # а в непонятных случаях будем считать, что режим морды - консольный
-
-        # предварительный и ограниченный разбор параметров командной строки
-        # нужен для определения gui/nogui ДО создания экземпляра Environment,
-        # чтобы знать, как отображать потом сообщения об ошибках
-        # копирование/перемещение определяем тут же, раз уж именно здесь
-        # определяли его по имени исполняемого файла
-        for arg in args[1:]:
-            if arg.startswith('-'):
-                if arg in self.CMDOPT_GUI:
-                    self.GUImode = True
-                elif arg in self.CMDOPT_NOGUI:
-                    self.GUImode = False
-                elif arg in self.CMDOPT_MOVE:
-                    self.modeMoveFiles = True
-                elif arg in self.CMDOPT_COPY:
-                    self.modeMoveFiles = False
-                # на неизвестные опции ругаемся не здесь, а в __parse_cmdline_options()
-
-        if self.modeMoveFiles is None:
-            raise Environment.Error('Меня зовут %s, и я не знаю, что делать.' % bname)
-
-    def __parse_cmdline_options(self, args):
+    def __parse_cmdline_options(self):
         """Разбор аргументов командной строки"""
 
-        carg = None
+        aparser = argparse.ArgumentParser(description='Поиск в каталогах-источниках изображений и видеофайлов, их перемещение\
+            (или копирование) в каталог-приемник.',
+            epilog='Если в командной строке указано от одного до нескольких каталогов, то последний (или единственный)\
+            является каталогом назначения, а прочие - каталогами-источниками.\nПараметры из командной строки имеют\
+            приоритет перед параметрами из файла настроек.')
 
-        for argnum, arg in enumerate(args[1:], 1):
-            if carg:
-                if carg in self.CMDOPT_IF_EXISTS:
-                    if arg in self.FEXIST_OPTIONS:
-                        self.ifFileExists = self.FEXIST_OPTIONS[arg]
-                    else:
-                        raise self.Error(self.E_CMDLINE % (argnum, 'недопустимое значение параметра "%s"' % carg))
-                carg = None
-            elif arg.startswith('-'):
-                if arg in self.CMDOPTS_WORKMODE:
-                    # режим междумордия и работы с файлами был определён ранее, вызовом __detect_work_mode()
-                    pass
-                elif arg in self.CMDOPT_IF_EXISTS:
-                    carg = self.__CMDOPT_IF_EXISTS_SHORT
+        aparser.add_argument('directory', help='каталог назначения и/или каталог-источник',
+            action='append', nargs='*')
+
+        grpmode = aparser.add_mutually_exclusive_group()
+        grpmode.add_argument('-c', '--copy', help='режим копирования файлов',
+            action='store_false', dest='movemode', default=self.modeMoveFiles)
+        grpmode.add_argument('-m', '--move', help='режим перемещения файлов',
+            action='store_true', dest='movemode', default=self.modeMoveFiles)
+
+        aparser.add_argument('-e', '--if-exists', help='поведение при совпадении имён файлов в каталоге назначения',
+            action='store', nargs='?', dest='ifexist',
+            choices=self.FEXIST_OPTIONS.keys(),
+            default=self.FEXISTS_OPTIONS_STR[self.ifFileExists])
+
+        args = aparser.parse_args()
+
+        # т.к. ArgumentParser хранит обычные параметры как список списков, извращаемся:
+
+        def __expand_list(l):
+            r = []
+
+            for e in l:
+                if isinstance(e, list):
+                    r += __expand_list(e)
                 else:
-                    raise self.Error(self.E_CMDLINE % (argnum, 'параметр "%s" не поддерживается' % arg))
-            else:
-                raise self.Error(self.E_CMDLINE % (argnum, 'ненужное имя файла'))
+                    r.append(e)
 
-        if carg:
-            raise self.Error(self.E_CMDLINE % (argnum, 'не указано значение параметра "%s"' % carg))
+            return r
+
+        adirs = __expand_list(args.directory)
+
+        if adirs:
+            self.destinationDir = adirs[-1]
+
+            if len(adirs) > 1:
+                # в командной строке есть каталоги-источники - они заменяют указанные в конфиге!
+                self.sourceDirs.clear()
+
+                for srcdir in adirs[:-1]:
+                    self.__add_src_dir(srcdir, False, False)
+
+    def __add_src_dir(self, path, ignore, fromconfig):
+        """Добавление каталога в список каталогов-источников.
+
+        path        - путь к каталогу,
+        ignore      - булевский параметр (см. класс SourceDir),
+        fromconfig  - True, если каталог добавляется из файла настроек
+                      (см. ниже варианты сообщений об ошибках)."""
+
+        path = validate_path(path)
+
+        # путь добавляем во внутренний список, если он не совпадает
+        # с каким-то из уже добавленных;
+        # существование каталога будет проверено при обработке файлов
+
+        if self.same_src_dir(path):
+            es = 'путь к каталогу-источнику "%s" совпадает с одним из уже указанных' % srcdir
+
+            if fromconfig:
+                es = self.E_BADVAL % (self.OPT_SRC_DIRS, self.SEC_PATHS, self.configPath, es)
+
+            raise self.Error(es)
+
+        self.sourceDirs.append(self.SourceDir(path, ignore))
 
     def __read_config_paths(self):
         """Разбор секции paths файла настроек"""
@@ -508,20 +515,9 @@ class Environment():
                 else:
                     srcdirignore = False
 
-                srcdir = validate_path(srcdir)
+                self.__add_src_dir(srcdir, srcdirignore, True)
 
-                # путь добавляем во внутренний список, если он не совпадает
-                # с каким-то из уже добавленных;
-                # существование каталога будет проверено при обработке файлов
-
-                if self.same_src_dir(srcdir):
-                    raise self.Error(self.E_BADVAL % (self.OPT_SRC_DIRS, self.SEC_PATHS, self.configPath,
-                        'путь %d (%s) совпадает с одним из уже указанных' % (ixsd, srcdir)))
-
-                self.sourceDirs.append(self.SourceDir(srcdir, srcdirignore))
-
-        if not self.sourceDirs:
-            raise self.Error(self.E_BADVAL % (self.OPT_SRC_DIRS, self.SEC_PATHS, self.configPath, 'не указано ни одного существующего исходного каталога'))
+        # наличие хоть одного каталога-источника проверяется в конце __init__
 
         #
         # каталог назначения
@@ -529,28 +525,7 @@ class Environment():
 
         self.destinationDir = self.cfg.getstr(self.SEC_PATHS, self.OPT_DEST_DIR)
 
-        # здесь теперь наличие каталога проверять не будем - оно будет проверяться при запуске
-        # файловых операций
-
-        #if not self.destinationDir:
-        #    raise self.Error(self.E_NOVAL % (self.OPT_DEST_DIR, self.SEC_PATHS, self.configPath))
-
-        self.destinationDir = validate_path(self.destinationDir)
-
-        #if not os.path.exists(self.destinationDir):
-        #    raise self.Error(self.E_BADVAL % (self.OPT_DEST_DIR, self.SEC_PATHS, self.configPath,
-        #        'путь "%s" не существует' % self.destinationDir))
-
-        if os.path.exists(self.destinationDir):
-            # если он есть - можно кой-каких проверок таки провернуть
-            if not os.path.isdir(self.destinationDir):
-                raise self.Error(self.E_BADVAL % (self.OPT_DEST_DIR, self.SEC_PATHS, self.configPath,
-                    'путь "%s" указывает не на каталог' % self.destinationDir))
-
-            # а это проверять ща не будем
-            #if self.check_dest_is_same_with_src_dir():
-            #    raise self.Error(self.E_BADVAL % (self.OPT_DEST_DIR, self.SEC_PATHS, self.configPath,
-            #        'каталог назначения совпадает с одним из исходных каталогов'))
+        # правильность указания каталога назначения проверяется в конце __init__
 
     def check_dest_is_same_with_src_dir(self):
         """Проверка, не является ли каталог назначения одним из каталогов-
@@ -588,11 +563,6 @@ class Environment():
         # show-src-dir
         #
         self.showSrcDir = self.cfg.getboolean(self.SEC_OPTIONS, self.OPT_SHOW_SRC_DIR, fallback=False)
-
-        #
-        # close-if-success
-        #
-        self.closeIfSuccess = self.cfg.getboolean(self.SEC_OPTIONS, self.OPT_CLOSE_IF_SUCCESS, fallback=True)
 
         #
         # known-*-types
@@ -707,7 +677,6 @@ class Environment():
         # секция options
         self.cfg.set(self.SEC_OPTIONS, self.OPT_IF_EXISTS, self.FEXISTS_OPTIONS_STR[self.ifFileExists])
         self.cfg.set(self.SEC_OPTIONS, self.OPT_SHOW_SRC_DIR, str(self.showSrcDir))
-        self.cfg.set(self.SEC_OPTIONS, self.OPT_CLOSE_IF_SUCCESS, str(self.closeIfSuccess))
 
         # секции aliases и templates не трогаем, т.к. они из гуя не изменяются
 
@@ -726,54 +695,61 @@ class Environment():
                       из файла настроек, если он указан, иначе возвращает
                       встроенный общий шаблон программы."""
 
-        if cameraModel:
-            cameraModel = cameraModel.lower()
+        if self.templates:
+            if cameraModel:
+                cameraModel = cameraModel.lower()
 
-            if cameraModel in self.templates:
-                return self.templates[cameraModel]
+                # ключ в словаре шаблонов может содержать символы подстановки,
+                # а потому проверяем ключи вручную!
+                for tplCameraModel in self.templates:
+                    if tplCameraModel == self.DEFAULT_TEMPLATE_NAME:
+                        # ибо self.DEFAULT_TEMPLATE_NAME = "*", а у нас тут fnmatch
+                        continue
 
-        return self.templates[self.DEFAULT_TEMPLATE_NAME]
+                    if fnmatch(cameraModel, tplCameraModel):
+                        return self.templates[tplCameraModel]
+
+        # шаблон не нашёлся по названию камеры -
+        # пробуем общий из настроек, если он есть
+        if self.DEFAULT_TEMPLATE_NAME in self.templates:
+            return self.templates[self.DEFAULT_TEMPLATE_NAME]
+
+        # а когда совсем ничего нету - встроенный шаблон
+        return defaultFileNameTemplate
+
+    def get_template_from_metadata(self, metadata):
+        """Получение экземпляра pmvtemplates.FileNameTemplate для
+        определённой камеры, модель которой определяется по
+        соответствующему полю metadata - экземпляра FileMetadata."""
+
+        return self.get_template(metadata.fields[metadata.MODEL])
 
     def __repr__(self):
         """Для отладки"""
-        return '''cfg = %s
-modeMoveFiles = %s
-GUImode = %s
-modeMessages = %s
-modeFileOp = %s
-sourceDirs = %s
-destinationDir = "%s"
-ifFileExists = %s
-knownFileTypes:%s
-showSrcDir = %s
-aliases = %s
-templates = %s
-maxLogSizeMB = %d,
-logger = "%s"''' % (self.cfg,
-    self.modeMoveFiles,
-    self.GUImode,
-    self.modeMessages,
-    self.modeFileOp,
-    str(self.sourceDirs),
-    self.destinationDir,
-    self.FEXISTS_OPTIONS_STR[self.ifFileExists],
-    self.knownFileTypes,
-    self.showSrcDir,
-    self.aliases,
-    ', '.join(map(str, self.templates.values())),
-    self.maxLogSizeMB,
-    self.logger)
+        return '%s(cfg = "%s", modeMoveFiles = %s, modeMessages = %s, modeFileOp = %s, sourceDirs = %s, destinationDir = "%s", ifFileExists = %s, knownFileTypes: %s, showSrcDir = %s, aliases = %s, templates = %s, maxLogSizeMB = %d, logger = "%s")' % (
+            self.__class__.__name__,
+            self.cfg,
+            self.modeMoveFiles,
+            self.modeMessages,
+            self.modeFileOp,
+            str(self.sourceDirs),
+            self.destinationDir,
+            self.FEXISTS_OPTIONS_STR[self.ifFileExists],
+            self.knownFileTypes,
+            self.showSrcDir,
+            self.aliases,
+            ', '.join(map(str, self.templates.values())),
+            self.maxLogSizeMB,
+            self.logger)
 
 
 if __name__ == '__main__':
     print('[debugging %s]' % __file__)
 
     try:
-        sys.argv[0] = 'photocpg.py'
-        print(sys.argv)
-        env = Environment(sys.argv)
-        if env.error:
-            raise Exception(env.error)
+        sys.argv[0] = 'photocp.py'
+        #sys.argv.append('-h')
+        env = Environment()
         #env.save()
 
     except Environment.Error as ex:
