@@ -53,23 +53,16 @@ def process_files(env):
             print(msg, file=sys.stderr)
 
     def job_error(msg):
-        print('* %s' % msg, file=sys.stderr)
+        print('* Ошибка: %s' % msg, file=sys.stderr)
 
     def job_warning(msg):
-        job_error(msg, file=sys.stderr)
-
-    def critical_error(msg):
-        print('* %s' % msg, file=sys.stderr)
-
-    def show_fatal_error(msg):
-        print('* %s' % msg, file=sys.stderr)
+        print('* Предупреждение: %s' % msg, file=sys.stderr)
 
     #
     # 1й проход - подсчет общего количества файлов для индикации прогресса
     # во втором проходе
     #
     env.logger.write_msg(None, 'подготовка')
-    job_progress(0.0, 'Подготовка...')
 
     srcDirs = env.sourceDirs
 
@@ -80,6 +73,8 @@ def process_files(env):
     # а кто натравит photomv на гигантскую файлопомойку -
     # сам себе злой буратино
     sourcedirs = []
+
+    job_progress(0.0, 'Поиск файлов...')
 
     for srcdir in srcDirs:
         if srcdir.ignore:
@@ -281,7 +276,7 @@ def main(args):
         if not es:
             es = repr(ex)
 
-        show_fatal_error(es)
+        print('* %s' % es, file=sys.stderr)
 
         return 1
 
