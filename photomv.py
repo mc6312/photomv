@@ -241,7 +241,7 @@ def process_files(env):
                         print_exception()
                         statSkippedFiles += 1
                         fopok = False
-                        emsg = 'не удалось % файл - %s' % (env.modeMessages.errmsg, repr(emsg))
+                        emsg = 'не удалось %s файл - %s' % (env.modeMessages.errmsg, repr(emsg))
                         job_error(emsg)
                         env.logger.write_error(timestamp, emsg)
 
